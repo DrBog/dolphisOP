@@ -25,6 +25,7 @@ class Gate(
     val roi: IntArray,           // x0, y0, x1, y1 in reference coords
     val tap: TapSpec,
     val timeoutMs: Long,
+    val preDelayMs: LongRange,
     val postDelayMs: LongRange,
     val nudge: Nudge?,
     val optional: Boolean,
@@ -97,6 +98,10 @@ class Recipe(
                     }
                     else -> TapSpec.Center
                 }
+                val pre = o.optJSONArray("pre_delay")
+                val hold = if (pre != null)
+                    (pre.getDouble(0) * 1000).toLong()..(pre.getDouble(1) * 1000).toLong()
+                else 0L..0L
                 val pd = o.optJSONArray("post_delay")
                 val delay = if (pd != null)
                     (pd.getDouble(0) * 1000).toLong()..(pd.getDouble(1) * 1000).toLong()
@@ -111,6 +116,7 @@ class Recipe(
                     roi = roi,
                     tap = tap,
                     timeoutMs = (o.optDouble("timeout", 60.0) * 1000).toLong(),
+                    preDelayMs = hold,
                     postDelayMs = delay,
                     nudge = nu,
                     optional = o.optBoolean("optional", false),

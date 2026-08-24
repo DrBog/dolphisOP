@@ -170,6 +170,7 @@ the top. Run both after any change to templates or thresholds.
     "roi": [345, 1465, 755, 1760],       // where to look, in reference coords
     "tap": "center",                     // "center" | [x,y] | {"offset":[dx,dy]}
     "timeout": 90,
+    "pre_delay": [0.0, 0.0],             // hold after matching, BEFORE tapping
     "post_delay": [1.0, 1.6],            // random wait after tapping
     "nudge": {"point": [601,1710], "every": 1.2}  // optional: tap while waiting
   }],
@@ -179,6 +180,18 @@ the top. Run both after any change to templates or thresholds.
 
 `tap: "center"` taps the middle of wherever the template *matched*, not a fixed
 coordinate — so the tap follows the button if the UI shifts.
+
+### Why `pre_delay` exists
+
+A screen can be drawn — and matched — a moment before it will actually accept
+input. Where a game's refresh lags its own transition animation, a tap fired the
+instant the gate confirms lands in that gap, does nothing, and the loop then
+waits out a full timeout for a transition that never started. `pre_delay` holds
+after the match and before the tap. `tap_next_level` uses 1.5s for exactly this
+reason.
+
+It is not the same as `post_delay`, which waits *after* tapping to let the next
+screen come up. A step can need both.
 
 ### Why `min_contrast` exists
 

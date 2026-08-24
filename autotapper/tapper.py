@@ -136,6 +136,7 @@ class Gate:
     roi: tuple[int, int, int, int]
     tap: Any
     timeout: float = 60.0
+    pre_delay: tuple[float, float] = (0.0, 0.0)
     post_delay: tuple[float, float] = (0.5, 0.9)
     nudge: dict | None = None
     optional: bool = False
@@ -173,12 +174,14 @@ class Recipe:
             if img is None:
                 raise FileNotFoundError(f"template not found: {path}")
             pd = d.get("post_delay", [0.5, 0.9])
+            pre = d.get("pre_delay", [0.0, 0.0])
             return Gate(
                 name=d["name"],
                 template=img,
                 roi=tuple(d["roi"]),
                 tap=d.get("tap", "center"),
                 timeout=float(d.get("timeout", 60)),
+                pre_delay=(float(pre[0]), float(pre[1])),
                 post_delay=(float(pd[0]), float(pd[1])),
                 nudge=d.get("nudge"),
                 optional=bool(d.get("optional", False)),
@@ -348,6 +351,14 @@ class Tapper:
                     self.interrupt_streak = 0
                     waited = time.time() - started
                     print(f"    {gate.name:16s} seen (score {m.score:.3f}, {waited:.1f}s)")
+                    # Hold before tapping. A screen can be drawn and matched
+                    # before it will actually accept input; tapping into that gap
+                    # does nothing and the loop stalls waiting for a transition
+                    # that never started.
+                    if gate.pre_delay[1] > 0:
+                        hold = random.uniform(*gate.pre_delay)
+                        print(f"    {'':16s} holding {hold:.1f}s before tapping")
+                        time.sleep(hold)
                     if gate.tap is not None:
                         self.do_tap(m.point, gate.name)
                     time.sleep(random.uniform(*gate.post_delay))

@@ -170,6 +170,14 @@ class Engine(
                     interruptStreak = 0
                     val secs = (System.currentTimeMillis() - started) / 1000.0
                     listener.onLog("    ${gate.name} seen (${"%.3f".format(m.score)}, ${"%.1f".format(secs)}s)")
+                    // Hold before tapping. A screen can be drawn and matched
+                    // before it will actually accept input; tapping into that gap
+                    // does nothing and the loop stalls waiting for a transition
+                    // that never started.
+                    if (gate.preDelayMs.last > 0) {
+                        listener.onLog("      holding ${gate.preDelayMs.first / 1000.0}s before tapping")
+                        settle(gate.preDelayMs)
+                    }
                     gate.tapPoint(m.x, m.y)?.let { doTap(it.first, it.second, gate.name) }
                     settle(gate.postDelayMs)
                     return true
