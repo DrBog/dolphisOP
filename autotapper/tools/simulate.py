@@ -60,6 +60,11 @@ def main() -> int:
     ap.add_argument("--recipe", type=Path, required=True)
     ap.add_argument("--video", required=True)
     ap.add_argument("--loops", type=int, default=1)
+    ap.add_argument("--ignore-waits", action="store_true",
+                    help="zero out settle_first and pre_delay. A replay has a fixed timeline "
+                         "that does not respond to taps, so any wait the engine adds desyncs "
+                         "it from the recording. Use this to regression-test gate ORDER; "
+                         "wait durations are validated separately by measuring frame motion.")
     ap.add_argument("--start-at", type=float, default=0.0,
                     help="begin the replay this many seconds in, to test mid-loop resync")
     ap.add_argument("--speed", type=float, default=1.0,
@@ -67,6 +72,10 @@ def main() -> int:
     args = ap.parse_args()
 
     rx = T.Recipe.load(args.recipe)
+    if args.ignore_waits:
+        for g in list(rx.steps) + list(rx.interrupts):
+            g.settle = None
+            g.pre_delay = (0.0, 0.0)
     dev = VideoDevice(args.video)
     print(f"replaying {dev.describe()}")
     print(f"recipe    {rx.name}\n")

@@ -41,12 +41,18 @@
         1760
       ],
       "tap": "center",
+      "settle_first": {
+        "threshold": 12.0,
+        "stable_for": 0.5,
+        "then_wait": 3.5,
+        "max_wait": 30.0
+      },
       "timeout": 90,
       "post_delay": [
         1.0,
         1.6
       ],
-      "note": "Event stage screen. Template is the word 'Fight' only - it deliberately excludes the ENEMY LV digit, which increments every clear."
+      "note": "Event stage screen. Template is the word 'Fight' only - it deliberately excludes the ENEMY LV digit, which increments every clear. Entering the event goes blank, then trickles the screen in, then keeps firing effects on the Fight button for seconds afterwards; the template matches partway through that. Measured at the engine's 0.35s poll spacing: the transition runs 13.7-74, the effects afterwards peak at 11.2, and they stop about 3.5s after the transition ends. So wait for motion to drop under 12 - which only the transition exceeds - then hold 3.5s for the effects."
     },
     {
       "name": "tap_start",

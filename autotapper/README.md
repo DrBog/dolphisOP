@@ -149,7 +149,13 @@ python3 tools/simulate.py --recipe recipes/<name> --video clip.mp4 --start-at 13
 It replays the recording through the real state machine on a virtual clock and
 checks the gates fire in the right order. `--start-at` begins partway through, so
 you can check the mid-loop resync picks the right step instead of falling back to
-the top. Run both after any change to templates or thresholds.
+the top.
+
+Use `--ignore-waits` for the ordering regression. A replay has a fixed timeline
+that does not respond to taps — in a real run, tapping Fight is what *causes* the
+next screen — so any wait the engine adds desyncs it from the recording and the
+run fails for reasons that have nothing to do with the gates. Wait durations are
+validated separately, by measuring frame motion (see `settle_first`).
 
 ---
 
