@@ -174,23 +174,35 @@ class TapperService : Service(), EngineListener {
             val v = frame.px[i].toInt().coerceIn(0, 255)
             px[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
         }
-        val bmp = Bitmap.createBitmap(px, frame.w, frame.h, Bitmap.Config.ARGB_8888)
+        // createBitmap(int[], ...) hands back an IMMUTABLE bitmap and Canvas
+        // rejects it. Allocate a mutable one and fill it instead.
+        val bmp = Bitmap.createBitmap(frame.w, frame.h, Bitmap.Config.ARGB_8888)
+        bmp.setPixels(px, 0, frame.w, 0, 0, frame.w, frame.h)
         val canvas = Canvas(bmp)
-        val box = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 3f; color = Color.GRAY }
-        val hit = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 6f; color = Color.GREEN }
-        val label = Paint().apply { color = Color.YELLOW; textSize = 34f; isAntiAlias = true }
+        // Drawn at full resolution then scaled down, so weights are sized for the
+        // downscale - hairlines and small text would vanish.
+        val k = frame.w / PREVIEW_W.toFloat()
+        val box = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 3f * k; color = Color.GRAY }
+        val hit = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 5f * k; color = Color.GREEN }
+        val label = Paint().apply { color = Color.YELLOW; textSize = 22f * k; isAntiAlias = true }
         for ((gate, m) in rows) {
             canvas.drawRect(gate.roi[0].toFloat(), gate.roi[1].toFloat(),
                 gate.roi[2].toFloat(), gate.roi[3].toFloat(), box)
             canvas.drawText("${gate.name} ${"%.2f".format(m.score)}",
-                gate.roi[0].toFloat() + 6f, gate.roi[1].toFloat() - 8f, label)
+                gate.roi[0].toFloat() + 6f * k,
+                maxOf(label.textSize, gate.roi[1].toFloat() - 8f * k), label)
             if (m.found) {
                 canvas.drawRect(m.x.toFloat(), m.y.toFloat(),
                     (m.x + gate.template.w).toFloat(), (m.y + gate.template.h).toFloat(), hit)
             }
         }
+        // A full-resolution PNG is ~10MB in memory for a preview shown in a
+        // 220dp view; scale it down before writing.
+        val scaled = Bitmap.createScaledBitmap(
+            bmp, PREVIEW_W, frame.h * PREVIEW_W / frame.w, true)
         val out = java.io.File(cacheDir, "probe.png")
-        java.io.FileOutputStream(out).use { bmp.compress(Bitmap.CompressFormat.PNG, 90, it) }
+        java.io.FileOutputStream(out).use { scaled.compress(Bitmap.CompressFormat.PNG, 90, it) }
+        if (scaled !== bmp) scaled.recycle()
         bmp.recycle()
         out.absolutePath
     } catch (t: Throwable) {
@@ -318,6 +330,7 @@ class TapperService : Service(), EngineListener {
         @Volatile
         var previewPath: String? = null
 
+        private const val PREVIEW_W = 540
         private const val CHANNEL = "autotapper"
         private const val NOTIF_ID = 42
     }
