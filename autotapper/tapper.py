@@ -158,6 +158,7 @@ class Recipe:
     poll_interval: float
     tap_jitter: int
     resync_on_start: bool
+    max_interrupt_repeats: int
     steps: list[Gate]
     interrupts: list[Gate] = field(default_factory=list)
 
@@ -194,6 +195,7 @@ class Recipe:
             poll_interval=float(cfg.get("poll_interval", 0.35)),
             tap_jitter=int(cfg.get("tap_jitter", 8)),
             resync_on_start=bool(cfg.get("resync_on_start", True)),
+            max_interrupt_repeats=int(cfg.get("max_interrupt_repeats", 6)),
             steps=[gate(s) for s in cfg["steps"]],
             interrupts=[gate(s) for s in cfg.get("interrupts", [])],
         )
@@ -256,6 +258,8 @@ class Tapper:
         self.verbose = verbose
         self.scale: tuple[float, float] = (1.0, 1.0)
         self.stats = {"loops": 0, "taps": 0, "interrupts": 0, "captures": 0}
+        self.interrupt_streak = 0
+        self.stuck_on: str | None = None
         if debug_dir:
             debug_dir.mkdir(parents=True, exist_ok=True)
 
@@ -308,6 +312,12 @@ class Tapper:
                 print(f"    ! interrupt: {g.name} (score {m.score:.3f}) -> dismissing")
                 self.do_tap(m.point, g.name)
                 self.stats["interrupts"] += 1
+                self.interrupt_streak += 1
+                # Dismissing the same popup over and over means the tap is not
+                # landing on the button. Say so instead of hammering it forever.
+                if self.interrupt_streak > self.rx.max_interrupt_repeats:
+                    self.stuck_on = g.name
+                    return True
                 time.sleep(random.uniform(*g.post_delay))
                 return True
         return False
@@ -325,6 +335,8 @@ class Tapper:
             frame, gray = self.grab()
 
             if self.handle_interrupts(gray):
+                if self.stuck_on:
+                    return False
                 continue
 
             m = find(gray, gate, self.rx.match_threshold, self.rx.min_contrast)
@@ -333,6 +345,7 @@ class Tapper:
             if m.found:
                 hits += 1
                 if hits >= self.rx.confirm_frames:
+                    self.interrupt_streak = 0
                     waited = time.time() - started
                     print(f"    {gate.name:16s} seen (score {m.score:.3f}, {waited:.1f}s)")
                     if gate.tap is not None:
@@ -346,6 +359,17 @@ class Tapper:
                     last_nudge = time.time()
 
             time.sleep(self.rx.poll_interval)
+
+        if self.stuck_on:
+            frame, _ = self.grab()
+            p = self.dump(frame, f"stuck_{self.stuck_on}")
+            print(f"\n    '{self.stuck_on}' dismissed {self.rx.max_interrupt_repeats}+ times "
+                  f"and the screen never changed.")
+            print(f"    The tap is most likely missing the button - this popup probably has "
+                  f"a layout the template does not cover.")
+            if p:
+                print(f"    screenshot saved: {p}")
+            return False
 
         if gate.optional:
             print(f"    {gate.name:16s} not seen within {gate.timeout:.0f}s (optional, skipping)")

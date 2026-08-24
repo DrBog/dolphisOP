@@ -50,6 +50,7 @@ class Recipe(
     val pollMs: Long,
     val jitter: Int,
     val resyncOnStart: Boolean,
+    val maxInterruptRepeats: Int,
     val steps: List<Gate>,
     val interrupts: List<Gate>,
 ) {
@@ -130,6 +131,7 @@ class Recipe(
                 pollMs = (json.optDouble("poll_interval", 0.35) * 1000).toLong(),
                 jitter = json.optInt("tap_jitter", 8),
                 resyncOnStart = json.optBoolean("resync_on_start", true),
+                maxInterruptRepeats = json.optInt("max_interrupt_repeats", 6),
                 steps = gates("steps"),
                 interrupts = gates("interrupts"),
             )

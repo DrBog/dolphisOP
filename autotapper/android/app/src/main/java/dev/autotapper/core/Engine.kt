@@ -27,6 +27,8 @@ class Engine(
     private val listener: EngineListener,
 ) {
     @Volatile private var stopping = false
+    private var interruptStreak = 0
+    private var stuckOn: String? = null
     private val rng = Random(System.nanoTime())
 
     fun stop() { stopping = true }
@@ -80,6 +82,13 @@ class Engine(
             if (m.found) {
                 listener.onLog("    ! ${g.name} (${"%.3f".format(m.score)}) -> dismissing")
                 g.tapPoint(m.x, m.y)?.let { doTap(it.first, it.second, g.name) }
+                interruptStreak++
+                // Dismissing the same popup over and over means the tap is not
+                // landing on the button. Say so instead of hammering it forever.
+                if (interruptStreak > recipe.maxInterruptRepeats) {
+                    stuckOn = g.name
+                    return true
+                }
                 settle(g.postDelayMs)
                 return true
             }
@@ -98,7 +107,10 @@ class Engine(
             val frame = act.capture(recipe.refW, recipe.refH)
             if (frame == null) { sleep(recipe.pollMs); continue }
 
-            if (handleInterrupts(frame)) continue
+            if (handleInterrupts(frame)) {
+                if (stuckOn != null) return false
+                continue
+            }
 
             val m = evaluate(frame, gate)
             if (m.score > best) best = m.score
@@ -106,6 +118,7 @@ class Engine(
             if (m.found) {
                 hits++
                 if (hits >= recipe.confirmFrames) {
+                    interruptStreak = 0
                     val secs = (System.currentTimeMillis() - started) / 1000.0
                     listener.onLog("    ${gate.name} seen (${"%.3f".format(m.score)}, ${"%.1f".format(secs)}s)")
                     gate.tapPoint(m.x, m.y)?.let { doTap(it.first, it.second, gate.name) }
@@ -124,6 +137,13 @@ class Engine(
         }
 
         if (stopping) return false
+        stuckOn?.let {
+            listener.onLog("    '$it' was dismissed ${recipe.maxInterruptRepeats}+ times and the "
+                    + "screen never changed.")
+            listener.onLog("    The tap is most likely missing the button - this popup probably "
+                    + "has a layout the template does not cover.")
+            return false
+        }
         if (gate.optional) {
             listener.onLog("    ${gate.name} not seen (optional, skipping)")
             return true

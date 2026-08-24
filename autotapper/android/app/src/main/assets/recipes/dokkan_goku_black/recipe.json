@@ -15,24 +15,19 @@
   "interrupts": [
     {
       "name": "friend_request",
-      "template": "friend_req.png",
+      "template": "friend_ok_right.png",
       "roi": [
-        215,
-        750,
-        860,
-        1025
+        300,
+        1330,
+        1020,
+        1530
       ],
-      "tap": {
-        "offset": [
-          220,
-          572
-        ]
-      },
+      "tap": "center",
       "post_delay": [
         0.8,
         1.3
       ],
-      "note": "Intermittent popup after a clear. Checked on every poll, in any state, because it covers the results OK button and would otherwise deadlock the loop."
+      "note": "The Friend Request popup has at least two layouts - a single centred OK ('friend limit reached') and Cancel+OK ('send this user a friend request?'). They share a title, so keying off the title and tapping a fixed offset lands in the gap between the buttons on the two-button layout. Matching the OK button itself and tapping the match centre hits the right button in both, because the match slides onto whichever button is actually there."
     }
   ],
   "steps": [
@@ -85,14 +80,7 @@
         0.2,
         0.4
       ],
-      "nudge": {
-        "point": [
-          601,
-          1710
-        ],
-        "every": 1.2
-      },
-      "note": "Battle auto-resolves in this stage - no combat taps. The nudge taps an inert area of the results panel to skip the reward reveal animation, exactly as in the recording."
+      "note": "Battle auto-resolves in this stage - no combat taps, and nothing is tapped while waiting. A Lv.11 battle took 66s where the Lv.3 in the source recording was instant, so this just waits it out."
     },
     {
       "name": "tap_results_ok",
@@ -109,7 +97,14 @@
         0.9,
         1.4
       ],
-      "note": "OK only becomes tappable once the reward reveal finishes."
+      "note": "OK only becomes tappable once the reward reveal finishes. The nudge taps an inert part of the results panel to skip that animation - it belongs here, not on await_results, where it would be tapping into a live battle.",
+      "nudge": {
+        "point": [
+          601,
+          1710
+        ],
+        "every": 1.2
+      }
     },
     {
       "name": "tap_next_level",
@@ -131,5 +126,6 @@
       ],
       "note": "'GO TO THE NEXT LEVEL' is a tap-anywhere screen; tapping dead centre avoids every button."
     }
-  ]
+  ],
+  "max_interrupt_repeats": 6
 }
