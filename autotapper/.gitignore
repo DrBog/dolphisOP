@@ -4,3 +4,10 @@ debug/
 *.mp4
 taps.json
 verify*.png
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/tools/matcher-parity/build/
+android/tools/matcher-parity/.gradle/
+*.apk

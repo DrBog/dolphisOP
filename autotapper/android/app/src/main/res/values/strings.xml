@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Autotapper</string>
+    <string name="accessibility_label">Autotapper</string>
+    <string name="accessibility_description">Lets Autotapper dispatch taps into the game. Nothing is read from the screen through this service and nothing leaves the device.</string>
+</resources>

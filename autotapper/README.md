@@ -40,6 +40,19 @@ Two details that matter:
 
 ---
 
+## Two ways to run it
+
+| | Desktop (this directory) | On the phone (`android/`) |
+| --- | --- | --- |
+| Needs a PC | yes, phone tethered over USB | no |
+| Capture | `adb exec-out screencap` | MediaProjection |
+| Taps | `adb shell input tap` | AccessibilityService |
+
+Both run the same state machine against the same `recipe.json` and the same
+templates. The Android app is the one to use for an actual grind session — see
+[`android/README.md`](android/README.md). Everything below covers the desktop
+tool, which is still where you *author and validate* a recipe.
+
 ## Setup
 
 ```bash
