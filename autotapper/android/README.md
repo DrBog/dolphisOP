@@ -25,6 +25,33 @@ Build it (below) or install the APK, then two one-time grants:
 
 Then press **Probe** first — see below for the order of operations.
 
+## Loadouts
+
+The **Loadout** dropdown lists every recipe the app can see, from two places:
+
+- **built in** — shipped inside the APK, read-only.
+- **saved** — folders under
+  `Android/data/dev.autotapper/files/recipes/` on the device. No permission is
+  needed to read them, they are visible in any file manager, and they survive an
+  app update. A saved loadout shadows a built-in one of the same name, which is
+  how you override a shipped default without losing it.
+
+| button | |
+| --- | --- |
+| **Import** | unpack a `.zip` into saved storage |
+| **Export** | zip the selected loadout and share it — mail it to yourself, keep a backup, send it to someone |
+| **Delete** | remove a saved loadout (disabled for built-in ones) |
+
+The last loadout you picked is remembered.
+
+A loadout zip is just the recipe folder: `recipe.json` at the root plus a
+`templates/` directory. A zip with everything inside one wrapping folder works
+too. **Import loads the recipe before accepting it**, so a zip missing a template
+fails immediately with a message rather than halfway through a grind.
+
+Add one by hand instead if you prefer — drop the folder straight into
+`Android/data/dev.autotapper/files/recipes/` over USB and it appears in the list.
+
 ## Use
 
 - **Probe** — takes one screenshot and scores every gate. No taps.

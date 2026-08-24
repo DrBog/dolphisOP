@@ -28,6 +28,7 @@ import dev.autotapper.core.Gate
 import dev.autotapper.core.Gray
 import dev.autotapper.core.MatchInfo
 import dev.autotapper.core.Recipe
+import dev.autotapper.core.Recipes
 import dev.autotapper.core.ScreenCapture
 
 /**
@@ -87,11 +88,14 @@ class TapperService : Service(), EngineListener {
         cap.start()
         capture = cap
 
+        val ref = Recipes.find(this, recipeName, intent.getBooleanExtra(EXTRA_RECIPE_USER, false))
+        if (ref == null) { emit("loadout '$recipeName' not found"); stopEverything(); return }
         val recipe = try {
-            Recipe.load(this, recipeName)
+            Recipe.load(this, ref)
         } catch (e: Exception) {
-            emit("recipe '$recipeName' failed to load: ${e.message}"); stopEverything(); return
+            emit("loadout '$recipeName' failed to load: ${e.message}"); stopEverything(); return
         }
+        emit("loadout: ${ref.label}")
 
         scaleX = metrics.widthPixels.toFloat() / recipe.refW
         scaleY = metrics.heightPixels.toFloat() / recipe.refH
@@ -318,6 +322,7 @@ class TapperService : Service(), EngineListener {
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_RECIPE = "recipe"
+        const val EXTRA_RECIPE_USER = "recipeIsUser"
         const val EXTRA_LOOPS = "loops"
         const val EXTRA_PROBE = "probe"
         const val EXTRA_LINE = "line"

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import org.json.JSONObject
+import java.io.InputStream
 
 /** Where to tap once a gate matches. */
 sealed class TapSpec {
@@ -75,17 +76,16 @@ class Recipe(
     val interrupts: List<Gate>,
 ) {
     companion object {
-        fun listAvailable(ctx: Context): List<String> =
-            (ctx.assets.list("recipes") ?: emptyArray()).toList().sorted()
+        fun load(ctx: Context, ref: RecipeRef): Recipe = load(Recipes.opener(ctx, ref))
 
-        fun load(ctx: Context, folder: String): Recipe {
-            val root = "recipes/$folder"
-            val json = JSONObject(ctx.assets.open("$root/recipe.json").bufferedReader().use { it.readText() })
+        /** Load from anywhere: [open] resolves a path relative to the recipe folder. */
+        fun load(open: (String) -> InputStream): Recipe {
+            val json = JSONObject(open("recipe.json").bufferedReader().use { it.readText() })
             val res = json.getJSONArray("reference_resolution")
 
             fun gray(path: String): Gray {
                 val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-                val bmp = ctx.assets.open(path).use { BitmapFactory.decodeStream(it, null, opts) }
+                val bmp = open(path).use { BitmapFactory.decodeStream(it, null, opts) }
                     ?: throw IllegalStateException("cannot decode template $path")
                 val w = bmp.width; val h = bmp.height
                 val pixels = IntArray(w * h)
@@ -135,7 +135,7 @@ class Recipe(
                 }
                 return Gate(
                     name = o.getString("name"),
-                    template = Matcher.Template(gray("$root/templates/${o.getString("template")}")),
+                    template = Matcher.Template(gray("templates/${o.getString("template")}")),
                     roi = roi,
                     tap = tap,
                     timeoutMs = (o.optDouble("timeout", 60.0) * 1000).toLong(),
