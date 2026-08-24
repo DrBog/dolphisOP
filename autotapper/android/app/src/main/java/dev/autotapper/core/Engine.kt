@@ -25,6 +25,7 @@ class Engine(
     private val recipe: Recipe,
     private val act: Actuator,
     private val listener: EngineListener,
+    private val vision: TextVision? = null,
 ) {
     @Volatile private var stopping = false
     private var interruptStreak = 0
@@ -32,6 +33,45 @@ class Engine(
     private val rng = Random(System.nanoTime())
 
     fun stop() { stopping = true }
+
+    // ---- OCR fallback -----------------------------------------------------
+    //
+    // The template gates only know the screens they were cut from. When one of
+    // them is stuck, read the words on screen and dismiss the dialog by its
+    // button text instead. This is the part that handles a popup nobody has ever
+    // templated.
+    //
+    // The policy below is deliberately deterministic and lives here, not in the
+    // vision layer: text recognition decides what the words ARE, never what is
+    // safe to tap.
+
+    /**
+     * Read the screen and dismiss whatever is on it. Returns true if it tapped.
+     */
+    private fun unstick(frame: Gray, why: String): Boolean {
+        val v = vision ?: return false
+        val words = v.read(frame)
+        if (words == null) { listener.onLog("    ocr unavailable"); return false }
+        if (words.isEmpty()) { listener.onLog("    ocr: no text found"); return false }
+
+        return when (val d = DismissPolicy.decide(words)) {
+            is DismissPolicy.Decision.Refuse -> {
+                listener.onLog("    ocr: screen mentions '${d.blocker}' - refusing to guess a tap here")
+                false
+            }
+            is DismissPolicy.Decision.Tap -> {
+                listener.onLog("    ocr: nothing templated matched for $why, but found " +
+                        "'${d.word.text}' (${d.group}) - tapping it")
+                doTap(d.word.cx, d.word.cy, "ocr:${d.word.text}")
+                true
+            }
+            is DismissPolicy.Decision.NothingFound -> {
+                listener.onLog("    ocr: read ${d.seen.size} words, none of them a button " +
+                        "(${d.seen.take(8).joinToString(",")})")
+                false
+            }
+        }
+    }
 
     fun evaluate(frame: Gray, gate: Gate): MatchInfo {
         val roi = frame.crop(gate.roi[0], gate.roi[1], gate.roi[2], gate.roi[3])
@@ -86,6 +126,13 @@ class Engine(
                 // Dismissing the same popup over and over means the tap is not
                 // landing on the button. Say so instead of hammering it forever.
                 if (interruptStreak > recipe.maxInterruptRepeats) {
+                    // The template's tap is missing the button. Read the dialog
+                    // and press the right one instead of hammering it.
+                    if (recipe.ocrUnstick && vision != null && unstick(frame, g.name)) {
+                        interruptStreak = 0
+                        settle(g.postDelayMs)
+                        return true
+                    }
                     stuckOn = g.name
                     return true
                 }
@@ -102,6 +149,8 @@ class Engine(
         var hits = 0
         var lastNudge = 0L
         var best = 0f
+        var unstickTries = 0
+        var lastUnstick = 0L
 
         while (!stopping && System.currentTimeMillis() < deadline) {
             val frame = act.capture(recipe.refW, recipe.refH)
@@ -131,6 +180,17 @@ class Engine(
                 if (nudge != null && System.currentTimeMillis() - lastNudge >= nudge.everyMs) {
                     doTap(nudge.x, nudge.y, "${gate.name}:nudge")
                     lastNudge = System.currentTimeMillis()
+                }
+                // Waiting far longer than expected usually means an unknown
+                // dialog is in the way. Read it rather than sit out the timeout.
+                val now = System.currentTimeMillis()
+                if (recipe.ocrUnstick && vision != null && unstickTries < recipe.unstickMax &&
+                    now - started > recipe.unstickAfterMs &&
+                    now - lastUnstick > recipe.unstickAfterMs
+                ) {
+                    unstickTries++
+                    lastUnstick = now
+                    if (unstick(frame, gate.name)) settle(600L..900L)
                 }
             }
             sleep(recipe.pollMs)

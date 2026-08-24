@@ -105,7 +105,7 @@ class TapperService : Service(), EngineListener {
             }
         }
 
-        val eng = Engine(recipe, actuator, this)
+        val eng = Engine(recipe, actuator, this, MlKitVision())
         engine = eng
 
         worker = Thread {

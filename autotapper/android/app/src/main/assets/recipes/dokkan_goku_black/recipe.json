@@ -127,5 +127,8 @@
       "note": "'GO TO THE NEXT LEVEL' is a tap-anywhere screen; tapping dead centre avoids every button."
     }
   ],
-  "max_interrupt_repeats": 6
+  "max_interrupt_repeats": 6,
+  "ocr_unstick": true,
+  "unstick_after": 20.0,
+  "unstick_max": 3
 }

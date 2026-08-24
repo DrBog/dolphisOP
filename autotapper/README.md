@@ -195,6 +195,9 @@ frames that scored above threshold across the five gates.
 - **Resolution is baked in.** Templates were cut at 1080x2340. Other resolutions
   are scaled to that reference, which usually works, but re-cut the templates if
   matching gets flaky.
+- **Unknown popups** are handled on the phone by the OCR fallback (see
+  [`android/README.md`](android/README.md)); the desktop tool has no equivalent and
+  will simply time out. Author and validate recipes here, grind on the phone.
 - **Only the popups it knows about.** `friend_request` is handled. A daily-login
   banner, a maintenance notice, a stamina-empty dialog, or a network error will
   stall the loop at a timeout. That is the intended failure mode — it stops with a

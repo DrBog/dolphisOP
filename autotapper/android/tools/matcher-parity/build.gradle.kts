@@ -10,5 +10,6 @@ application { mainClass.set("VerifyKt") }
 // exactly what runs on the phone. The rest of core/ needs the Android SDK.
 sourceSets["main"].kotlin.apply {
     setSrcDirs(listOf("src/main/kotlin", "../../app/src/main/java/dev/autotapper/core"))
-    include("Verify.kt", "**/Gray.kt", "**/Matcher.kt")
+    include("Verify.kt", "PolicyCheck.kt",
+            "**/Gray.kt", "**/Matcher.kt", "**/DismissPolicy.kt", "**/TextVision.kt")
 }

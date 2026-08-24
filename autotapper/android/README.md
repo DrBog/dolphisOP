@@ -77,6 +77,42 @@ MediaProjection ──> ImageReader ──> greyscale ──> Matcher (NCC) ─�
 - `app/TapperService.kt` — foreground service owning the projection and the loop.
 - `app/TapService.kt` — the accessibility service that actually taps.
 
+### When nothing matches: OCR fallback
+
+Template gates only know the screens they were cut from. A popup nobody has
+templated stalls the loop until someone cuts a new template — which happened on
+the very first real run, with a Friend Request layout the source recording never
+showed.
+
+So when a step has been waiting far longer than expected, or an interrupt keeps
+firing without the screen changing, the app reads the words on screen with ML
+Kit's bundled Latin model and dismisses the dialog by its button text. Offline,
+free per call, and no screenshot leaves the phone. It costs ~43MB of APK, which
+is the whole reason this build is ~48MB rather than ~5MB.
+
+**The safety policy is deliberately not the model's decision.** Recognition
+decides what the words *are*; `core/DismissPolicy.kt` — a plain lookup table —
+decides what may be touched:
+
+| | |
+| --- | --- |
+| Refuse outright | BUY, PURCHASE, SHOP, STORE, PAY, SUMMON, RECHARGE, REFILL, CONTINUE, REVIVE, STONE(S), EXCHANGE, PRICE, COST |
+| Prefer | CANCEL, CLOSE, NO, LATER, SKIP, DECLINE, BACK |
+| Fall back to | OK |
+
+If any forbidden word appears *anywhere* on screen it taps nothing at all and
+says why. Declining beats accepting, and OK is only used when the dialog offers
+no way out but forward. In Dokkan the failure mode is spending Dragon Stones, so
+"refuse and stop" is always the right answer when unsure.
+
+`tools/matcher-parity` table-tests this (`gradle run --args="policy"`) across the
+real dialogs — including a stamina refill, a continue-after-loss, a multi-summon
+and a shop purchase, all of which must be refused.
+
+Tune it per recipe with `"ocr_unstick"`, `"unstick_after"` (seconds of waiting
+before it reads the screen, default 20) and `"unstick_max"` (attempts per step,
+default 3).
+
 ### Why the matcher is hand-written
 
 OpenCV's Android SDK is ~100MB of native libraries for one function. `Matcher.kt`

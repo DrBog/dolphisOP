@@ -42,4 +42,6 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    // Bundled Latin model: offline, free per call, no screenshot leaves the device.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }
