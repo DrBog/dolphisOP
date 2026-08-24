@@ -23,6 +23,13 @@ Dokkan Battle — *Epitome of Sublime Beauty / Goku Black*:
 | `tap_results_ok` | the results **OK** button | taps it |
 | `tap_next_level` | **GO TO THE NEXT LEVEL** | taps centre, loop repeats |
 
+Before the first loop it **resyncs**: it looks at what is on screen and jumps to
+whichever step is already live, rather than assuming you start on the stage
+screen. Starting mid-cycle otherwise means idling until the game comes all the
+way round — on a real run that cost 83 seconds. Where two gates overlap (the
+results banner is still up when the OK button appears) it takes the more advanced
+one. Set `"resync_on_start": false` to always start from the top.
+
 Plus one interrupt, checked on *every* poll in *any* state:
 
 | Interrupt | Why |
@@ -79,6 +86,9 @@ Open the stage screen on the phone and you should see `tap_fight` at **YES** wit
 score near 1.0. The annotated screenshot in `--debug-dir` shows the search regions
 and where it intends to tap.
 
+`--dry-run` and `--loops` both honour the resync, so you can start it with the
+game on any screen in the cycle.
+
 Then a dry run — full state machine, still no taps:
 
 ```bash
@@ -133,11 +143,13 @@ and the highest score it reaches on an unrelated screen. Aim for a margin above
 
 ```bash
 python3 tools/simulate.py --recipe recipes/<name> --video clip.mp4
+python3 tools/simulate.py --recipe recipes/<name> --video clip.mp4 --start-at 13.2
 ```
 
 It replays the recording through the real state machine on a virtual clock and
-checks the gates fire in the right order. Run it after any change to templates or
-thresholds.
+checks the gates fire in the right order. `--start-at` begins partway through, so
+you can check the mid-loop resync picks the right step instead of falling back to
+the top. Run both after any change to templates or thresholds.
 
 ---
 

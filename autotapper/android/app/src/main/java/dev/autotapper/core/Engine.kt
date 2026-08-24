@@ -133,6 +133,33 @@ class Engine(
         return false
     }
 
+    /**
+     * Which step is the game already on?
+     *
+     * The loop otherwise always starts at step 1, so starting while the game sits
+     * mid-cycle means waiting for it to come all the way round - on a real run
+     * that cost 83 seconds. Two gates can be live at once (the results banner is
+     * still up when the OK button appears), so take the LAST match: that is the
+     * most advanced state.
+     */
+    private fun resync(): Int? {
+        repeat(6) {
+            if (stopping) return null
+            val frame = act.capture(recipe.refW, recipe.refH)
+            if (frame == null) { sleep(recipe.pollMs); return@repeat }
+            if (handleInterrupts(frame)) return@repeat
+            var at: Int? = null
+            for ((i, gate) in recipe.steps.withIndex()) {
+                if (evaluate(frame, gate).found) at = i
+            }
+            if (at != null) return at
+            // Nothing matched - most likely a transition between screens rather
+            // than an unknown state. Give it a moment before giving up.
+            sleep(recipe.pollMs * 2)
+        }
+        return null
+    }
+
     fun run(loops: Int) {
         listener.onLog("recipe: ${recipe.name}")
         listener.onLog("steps : ${recipe.steps.joinToString(" -> ") { it.name }}")
@@ -140,10 +167,21 @@ class Engine(
             listener.onLog("watch : ${recipe.interrupts.joinToString(", ") { it.name }} (any time)")
         val t0 = System.currentTimeMillis()
         var done = 0
+        var startAt = 0
+        if (recipe.resyncOnStart) {
+            val at = resync()
+            when {
+                at == null -> listener.onLog("  no known screen recognised - starting from the top")
+                at > 0 -> {
+                    listener.onLog("  already at '${recipe.steps[at].name}' - resuming there")
+                    startAt = at
+                }
+            }
+        }
         for (n in 1..loops) {
             if (stopping) break
             listener.onLog("  loop $n/$loops")
-            for (gate in recipe.steps) {
+            for (gate in recipe.steps.drop(startAt)) {
                 listener.onState(n, loops, gate.name)
                 if (!runStep(gate)) {
                     if (stopping) {
@@ -154,6 +192,7 @@ class Engine(
                     return
                 }
             }
+            startAt = 0
             done++
         }
         val secs = (System.currentTimeMillis() - t0) / 1000.0

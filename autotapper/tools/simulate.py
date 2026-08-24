@@ -60,6 +60,8 @@ def main() -> int:
     ap.add_argument("--recipe", type=Path, required=True)
     ap.add_argument("--video", required=True)
     ap.add_argument("--loops", type=int, default=1)
+    ap.add_argument("--start-at", type=float, default=0.0,
+                    help="begin the replay this many seconds in, to test mid-loop resync")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="virtual seconds advanced per poll, relative to poll_interval")
     args = ap.parse_args()
@@ -70,7 +72,10 @@ def main() -> int:
     print(f"recipe    {rx.name}\n")
 
     # Drive tapper's clock from the recording instead of the wall clock.
-    state = {"t": 0.0}
+    state = {"t": args.start_at}
+    dev.clock = args.start_at
+    if args.start_at:
+        print(f"starting replay at {args.start_at:.1f}s into the clip\n")
 
     def fake_time() -> float:
         return state["t"]
@@ -100,11 +105,18 @@ def main() -> int:
     for label, t, pt in fired:
         print(f"    {t:6.2f}s  {label:22s} tap {pt}")
 
-    expected = ["tap_fight", "tap_start", "tap_results_ok", "friend_request", "tap_next_level"]
     got = [l for l, _, _ in fired if not l.endswith(":nudge")]
-    print(f"\n  expected order : {expected}")
-    print(f"  observed order : {got}")
-    ok = got[:len(expected)] == expected
+    if args.start_at:
+        # Mid-loop: assert it did NOT start from the top, which is the whole point.
+        ok = bool(got) and got[0] != "tap_fight"
+        print(f"\n  observed order : {got}")
+        print(f"  first gate     : {got[0] if got else 'none'} "
+              f"({'resynced' if ok else 'fell back to the top of the loop'})")
+    else:
+        expected = ["tap_fight", "tap_start", "tap_results_ok", "friend_request", "tap_next_level"]
+        print(f"\n  expected order : {expected}")
+        print(f"  observed order : {got}")
+        ok = got[:len(expected)] == expected
     print(f"\n  {'PASS' if ok and rc == 0 else 'FAIL'} - "
           f"{'all gates fired in order' if ok else 'sequence mismatch'}"
           f"{'' if rc == 0 else f' (runner exited {rc})'}")

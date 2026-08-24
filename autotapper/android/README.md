@@ -71,8 +71,9 @@ MediaProjection ──> ImageReader ──> greyscale ──> Matcher (NCC) ─�
   `TM_CCOEFF_NORMED`.
 - `core/Recipe.kt` — loads the same `recipe.json` + PNG templates from assets.
 - `core/Engine.kt` — the visual-gated state machine, same rules as the desktop
-  tool: confirm over consecutive frames, contrast gate, interrupts checked in any
-  state, stop on timeout rather than tap blindly.
+  tool: resync to the step already on screen before the first loop, confirm over
+  consecutive frames, contrast gate, interrupts checked in any state, stop on
+  timeout rather than tap blindly.
 - `app/TapperService.kt` — foreground service owning the projection and the loop.
 - `app/TapService.kt` — the accessibility service that actually taps.
 
@@ -165,6 +166,9 @@ can be done about that short of root.
   projection is revoked. There is no way around it; it is a privacy guarantee.
 - **FLAG_SECURE apps capture as black.** Banking apps and some DRM video will not
   work. Dokkan is fine — you screen-recorded it, which uses the same API.
+- **Start anywhere in the cycle.** The first thing it does is work out which step
+  the game is already on and resume there, so you do not have to be on the stage
+  screen when you press Start.
 - **The game must be in the foreground.** The loop taps whatever is on screen. If
   you switch apps mid-run, stop it first.
 - **Same recipe limits as the desktop tool** — only the popups it knows about, no

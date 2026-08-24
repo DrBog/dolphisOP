@@ -49,6 +49,7 @@ class Recipe(
     val confirmFrames: Int,
     val pollMs: Long,
     val jitter: Int,
+    val resyncOnStart: Boolean,
     val steps: List<Gate>,
     val interrupts: List<Gate>,
 ) {
@@ -128,6 +129,7 @@ class Recipe(
                 confirmFrames = json.optInt("confirm_frames", 2),
                 pollMs = (json.optDouble("poll_interval", 0.35) * 1000).toLong(),
                 jitter = json.optInt("tap_jitter", 8),
+                resyncOnStart = json.optBoolean("resync_on_start", true),
                 steps = gates("steps"),
                 interrupts = gates("interrupts"),
             )

@@ -157,6 +157,7 @@ class Recipe:
     confirm_frames: int
     poll_interval: float
     tap_jitter: int
+    resync_on_start: bool
     steps: list[Gate]
     interrupts: list[Gate] = field(default_factory=list)
 
@@ -192,6 +193,7 @@ class Recipe:
             confirm_frames=int(cfg.get("confirm_frames", 2)),
             poll_interval=float(cfg.get("poll_interval", 0.35)),
             tap_jitter=int(cfg.get("tap_jitter", 8)),
+            resync_on_start=bool(cfg.get("resync_on_start", True)),
             steps=[gate(s) for s in cfg["steps"]],
             interrupts=[gate(s) for s in cfg.get("interrupts", [])],
         )
@@ -357,6 +359,31 @@ class Tapper:
             print(f"      screenshot saved: {p}")
         return False
 
+    # -- resync ------------------------------------------------------------
+
+    def resync(self) -> int | None:
+        """Which step is the game already on?
+
+        The loop otherwise always starts at step 1, so pressing start while the
+        game sits mid-cycle means waiting for it to come all the way round. Two
+        gates can be live at once (the results banner is still up when the OK
+        button appears), so take the LAST match - that is the most advanced state.
+        """
+        for attempt in range(6):
+            frame, gray = self.grab()
+            if self.handle_interrupts(gray):
+                continue
+            at = None
+            for i, gate in enumerate(self.rx.steps):
+                if find(gray, gate, self.rx.match_threshold, self.rx.min_contrast).found:
+                    at = i
+            if at is not None:
+                return at
+            # Nothing matched - most likely a transition between screens rather
+            # than an unknown state. Give it a moment before giving up.
+            time.sleep(self.rx.poll_interval * 2)
+        return None
+
     # -- main loop ---------------------------------------------------------
 
     def run(self, loops: int) -> int:
@@ -368,13 +395,23 @@ class Tapper:
         print(f"mode   : {'DRY RUN (no taps sent)' if self.dry_run else 'LIVE'}\n")
 
         t0 = time.time()
+        start_at = 0
+        if self.rx.resync_on_start:
+            at = self.resync()
+            if at is None:
+                print("  no known screen recognised - starting from the top\n")
+            elif at > 0:
+                print(f"  already at '{self.rx.steps[at].name}' - resuming there\n")
+                start_at = at
+
         for n in range(1, loops + 1):
             print(f"  loop {n}/{loops}")
-            for gate in self.rx.steps:
+            for gate in self.rx.steps[start_at:]:
                 if not self.run_step(gate):
                     print(f"\n  stopped in loop {n} at step '{gate.name}'.")
                     self.report(t0)
                     return 1
+            start_at = 0
             self.stats["loops"] += 1
             if self.dry_run:
                 print("  (dry run: stopping after one pass)\n")

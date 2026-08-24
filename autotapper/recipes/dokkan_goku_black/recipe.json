@@ -2,70 +2,133 @@
   "name": "dokkan_goku_black",
   "description": "Dokkan Battle - Epitome of Sublime Beauty / Goku Black. Clears the stage, taps through the results, handles the intermittent Friend Request popup, then advances to the next level and repeats.",
   "source_recording": "Screen_Recording_20260823_220900_Dokkan.mp4",
-  "reference_resolution": [1080, 2340],
-
+  "reference_resolution": [
+    1080,
+    2340
+  ],
   "match_threshold": 0.82,
   "min_contrast": 18.0,
   "confirm_frames": 2,
   "poll_interval": 0.35,
   "tap_jitter": 8,
-
+  "resync_on_start": true,
   "interrupts": [
     {
       "name": "friend_request",
       "template": "friend_req.png",
-      "roi": [215, 750, 860, 1025],
-      "tap": {"offset": [220, 572]},
-      "post_delay": [0.8, 1.3],
+      "roi": [
+        215,
+        750,
+        860,
+        1025
+      ],
+      "tap": {
+        "offset": [
+          220,
+          572
+        ]
+      },
+      "post_delay": [
+        0.8,
+        1.3
+      ],
       "note": "Intermittent popup after a clear. Checked on every poll, in any state, because it covers the results OK button and would otherwise deadlock the loop."
     }
   ],
-
   "steps": [
     {
       "name": "tap_fight",
       "template": "stage_fight.png",
-      "roi": [345, 1465, 755, 1760],
+      "roi": [
+        345,
+        1465,
+        755,
+        1760
+      ],
       "tap": "center",
       "timeout": 90,
-      "post_delay": [1.0, 1.6],
+      "post_delay": [
+        1.0,
+        1.6
+      ],
       "note": "Event stage screen. Template is the word 'Fight' only - it deliberately excludes the ENEMY LV digit, which increments every clear."
     },
     {
       "name": "tap_start",
       "template": "team_start.png",
-      "roi": [685, 1885, 1080, 2195],
+      "roi": [
+        685,
+        1885,
+        1080,
+        2195
+      ],
       "tap": "center",
       "timeout": 45,
-      "post_delay": [1.0, 1.6],
+      "post_delay": [
+        1.0,
+        1.6
+      ],
       "note": "Team select. Team carries over from the previous clear, so no team building is needed."
     },
     {
       "name": "await_results",
       "template": "result_screen.png",
-      "roi": [0, 885, 1060, 1170],
+      "roi": [
+        0,
+        885,
+        1060,
+        1170
+      ],
       "tap": null,
       "timeout": 180,
-      "post_delay": [0.2, 0.4],
-      "nudge": {"point": [601, 1710], "every": 1.2},
+      "post_delay": [
+        0.2,
+        0.4
+      ],
+      "nudge": {
+        "point": [
+          601,
+          1710
+        ],
+        "every": 1.2
+      },
       "note": "Battle auto-resolves in this stage - no combat taps. The nudge taps an inert area of the results panel to skip the reward reveal animation, exactly as in the recording."
     },
     {
       "name": "tap_results_ok",
       "template": "result_ok.png",
-      "roi": [230, 1855, 865, 2180],
+      "roi": [
+        230,
+        1855,
+        865,
+        2180
+      ],
       "tap": "center",
       "timeout": 60,
-      "post_delay": [0.9, 1.4],
+      "post_delay": [
+        0.9,
+        1.4
+      ],
       "note": "OK only becomes tappable once the reward reveal finishes."
     },
     {
       "name": "tap_next_level",
       "template": "next_level.png",
-      "roi": [0, 910, 1080, 1350],
-      "tap": [540, 1400],
+      "roi": [
+        0,
+        910,
+        1080,
+        1350
+      ],
+      "tap": [
+        540,
+        1400
+      ],
       "timeout": 60,
-      "post_delay": [1.2, 1.8],
+      "post_delay": [
+        1.2,
+        1.8
+      ],
       "note": "'GO TO THE NEXT LEVEL' is a tap-anywhere screen; tapping dead centre avoids every button."
     }
   ]
