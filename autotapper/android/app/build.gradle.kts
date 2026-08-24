@@ -13,6 +13,11 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // ML Kit ships its OCR pipeline as a ~11MB native library per ABI, and
+        // four copies is most of the APK. Every phone this targets is arm64.
+        // Drop this block to build a universal APK.
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     buildTypes {

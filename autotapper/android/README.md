@@ -58,6 +58,11 @@ gradle :app:assembleRelease
 The release build is debug-signed on purpose, so it installs without anyone
 having to manage a keystore. It is not fit for distribution as-is.
 
+It also builds **arm64-v8a only**. ML Kit ships its OCR pipeline as a ~11MB
+native library per ABI, and carrying all four put the APK at 46MB against 18MB
+for arm64 alone. Every phone this targets is arm64; remove the `ndk { abiFilters }`
+block in `app/build.gradle.kts` for a universal APK.
+
 ## How it works
 
 ```
