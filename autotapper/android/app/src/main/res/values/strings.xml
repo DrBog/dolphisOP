@@ -2,4 +2,5 @@
     <string name="app_name">Autotapper</string>
     <string name="accessibility_label">Autotapper</string>
     <string name="accessibility_description">Lets Autotapper dispatch taps into the game. Nothing is read from the screen through this service and nothing leaves the device.</string>
+    <string name="restricted_hint">Toggle greyed out, or “Controlled by Restricted Setting”? That is Android blocking Accessibility for sideloaded apps, not a fault in this app. Samsung: turn off Settings → Security and privacy → Auto Blocker first. Then in App info use ⋮ → “Allow restricted settings”. Failing that, over ADB: adb shell appops set dev.autotapper ACCESS_RESTRICTED_SETTINGS allow</string>
 </resources>

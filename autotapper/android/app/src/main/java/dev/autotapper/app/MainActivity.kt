@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
 import android.provider.Settings
 import android.text.TextUtils
 import androidx.activity.result.contract.ActivityResultContracts
@@ -79,6 +80,16 @@ class MainActivity : AppCompatActivity() {
         ui.accessibilityBtn.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
+        // Android 13+ hides the accessibility toggle for sideloaded apps behind
+        // "Restricted settings". Nothing in-app can lift that - it is a security
+        // gate against exactly this install path - but we can at least land the
+        // user on the screen whose overflow menu unlocks it.
+        ui.appInfoBtn.setOnClickListener {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", packageName, null))
+            )
+        }
         ui.probeBtn.setOnClickListener { launch(probe = true) }
         ui.startBtn.setOnClickListener { launch(probe = false) }
         ui.stopBtn.setOnClickListener {
@@ -116,6 +127,8 @@ class MainActivity : AppCompatActivity() {
         else
             "Tap injection: OFF — enable “Autotapper” under Accessibility, or it can see but not tap"
         ui.accessibilityBtn.isEnabled = !on
+        ui.appInfoBtn.isEnabled = !on
+        ui.restrictedHint.visibility = if (on) android.view.View.GONE else android.view.View.VISIBLE
     }
 
     /**

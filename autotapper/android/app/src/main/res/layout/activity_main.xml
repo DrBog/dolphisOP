@@ -27,6 +27,21 @@
         android:text="Open Accessibility settings" />
 
     <TextView
+        android:id="@+id/restrictedHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="12sp"
+        android:text="@string/restricted_hint" />
+
+    <Button
+        android:id="@+id/appInfoBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Open app info (for “Allow restricted settings”)" />
+
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"

@@ -98,6 +98,50 @@ Two bugs came out of that test and are worth knowing about if you touch the matc
   normalised correlation. Accumulation is in Double, with a relative variance guard
   and a clamp to [-1, 1].
 
+## Troubleshooting
+
+### “Controlled by Restricted Setting”, or the Accessibility toggle is greyed out
+
+Expected, and not a fault in the app. From Android 13, an app installed outside
+an app store cannot be granted Accessibility until you explicitly lift the
+restriction — sideloaded apps abusing accessibility is the exact attack this
+blocks. Unlock it once:
+
+1. **Samsung only, do this first:** Settings → Security and privacy →
+   **Auto Blocker** → off. While Auto Blocker is on it re-applies the block and
+   the menu item in step 2 may not even appear.
+2. Settings → Apps → Autotapper → **⋮ (top right)** → **Allow restricted
+   settings**. The app's *Open app info* button takes you straight there. The
+   item only shows up after you have tried to enable the toggle once and been
+   refused, which is the dialog that sent you here.
+3. Then Settings → Accessibility → Autotapper → On.
+
+If the menu item is missing no matter what, set the flag directly over ADB:
+
+```bash
+adb shell appops set dev.autotapper ACCESS_RESTRICTED_SETTINGS allow
+```
+
+Or avoid the whole thing: installing with `adb install -r app-release.apk`
+never trips the restriction, because it applies to file-manager style sideloads
+rather than to installs made through the session-based installer.
+
+### Probe shows every gate at a low score
+
+The app is capturing something other than the game — usually the launcher,
+because you probed without switching back to the game first. Open the game, then
+switch to Autotapper and probe.
+
+If scores are low with the right screen up, the resolution likely differs from
+the 1080x2340 the templates were cut at. Frames are scaled to that reference, so
+it usually still works, but re-cut the templates from a recording on *your*
+device if matching is unreliable. See `../README.md`.
+
+### Everything scores ~0 and the screen looks black
+
+The app sets `FLAG_SECURE`, which makes MediaProjection capture black. Nothing
+can be done about that short of root.
+
 ## Limits
 
 - **Screen capture is per-session.** Android re-prompts after a reboot or when the
