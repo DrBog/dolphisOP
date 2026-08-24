@@ -201,6 +201,38 @@ matching stays unreliable. See `../README.md`.
 The app sets `FLAG_SECURE`, which makes MediaProjection capture black. Nothing
 can be done about that short of root.
 
+## Memory
+
+A capture-and-match loop at 1080x2340 is easy to write in a way that destroys a
+phone, and the first version did. Every `capture()` allocated a fresh
+`FloatArray(w * h)` — 9.6MB — straight into the large-object heap, plus a fresh
+ROI crop and a fresh matcher pyramid on every poll. Measured: **12.2MB per poll,
+~24MB/s sustained, ~29GB churned over a twenty minute run**, all while the app
+also held a MediaProjection mirror of a 60fps game. That was enough to take a
+whole device down.
+
+Everything on the hot path now refills buffers it already owns:
+
+| | per poll |
+| --- | --- |
+| allocating (before) | 11.61 MB |
+| reusing buffers (after) | **0.01 MB** |
+
+Measure it yourself — `gradle run --args="alloc <reference-data-dir>"` in
+`tools/matcher-parity` fails if steady-state allocation exceeds 1MB per poll.
+
+Two things to be careful of if you touch this:
+
+- **Settle detection needs two buffers.** Reuse one and `prev` and the current
+  frame become the same array, every difference is zero, and it declares the
+  screen settled instantly.
+- **`capture()` returns the same object every time.** It is valid until the next
+  capture; nothing may retain it.
+
+There is also a heap watchdog: above 85% for five consecutive polls the run stops
+rather than pushing the device into a state where stopping is no longer possible.
+Each loop logs `heap used/max MB` so a run that drifts is visible in the log.
+
 ## Limits
 
 - **Screen capture is per-session.** Android re-prompts after a reboot or when the

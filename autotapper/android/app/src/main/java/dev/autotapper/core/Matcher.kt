@@ -37,6 +37,13 @@ object Matcher {
         val h = full.h
         fun at(s: Int): Level = levels.getValue(s)
 
+        /**
+         * Scratch pyramid for the ROI this template is searched in. A template
+         * belongs to exactly one gate, and that gate always searches the same
+         * ROI, so these buffers are allocated once instead of every poll.
+         */
+        val roiPyramid = HashMap<Int, Gray>()
+
         private companion object {
             /** Descending powers of two, coarsest first, keeping the top level >= 16px. */
             fun pyramid(w: Int, h: Int): List<Int> {
@@ -83,9 +90,13 @@ object Matcher {
 
     /** Locate [tpl] inside [roi]. Returns the best score and its top-left in roi coords. */
     fun find(roi: Gray, tpl: Template): Result {
-        // Build the ROI pyramid once; find() otherwise re-downscales the same ROI
-        // for every candidate at every level.
-        val pyr = tpl.scales.associateWith { roi.downscale(it) }
+        // Build the ROI pyramid once per call, into buffers the template owns, so
+        // a steady-state poll allocates nothing here.
+        val pyr = HashMap<Int, Gray>(tpl.scales.size)
+        for (s in tpl.scales) {
+            pyr[s] = if (s == 1) roi else roi.downscaleInto(s, tpl.roiPyramid[s])
+                .also { tpl.roiPyramid[s] = it }
+        }
         val top = tpl.scales.first()
         val img0 = pyr.getValue(top)
         val t0 = tpl.at(top)

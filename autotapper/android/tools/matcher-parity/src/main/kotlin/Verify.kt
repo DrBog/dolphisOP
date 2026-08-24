@@ -27,6 +27,7 @@ fun readGray(f: File): Gray {
 
 fun main(args: Array<String>) {
     if (args.firstOrNull() == "policy") kotlin.system.exitProcess(policyMain())
+    if (args.firstOrNull() == "alloc") kotlin.system.exitProcess(allocMain(args[1]))
     val dir = args.firstOrNull() ?: System.getProperty("data")
         ?: error("usage: run --args=<reference-data-dir>  (see export_reference.py)")
     val base = File(dir)

@@ -30,6 +30,12 @@ class Engine(
     @Volatile private var stopping = false
     private var interruptStreak = 0
     private var stuckOn: String? = null
+    /** Scratch ROI crops, one per gate, refilled rather than reallocated. */
+    private val cropScratch = HashMap<String, Gray>()
+    /** Settle detection needs two buffers - one alias and every frame looks identical. */
+    private var settleA: Gray? = null
+    private var settleB: Gray? = null
+    private var heapWarnings = 0
     private val rng = Random(System.nanoTime())
 
     fun stop() { stopping = true }
@@ -49,7 +55,12 @@ class Engine(
         while (!stopping && System.currentTimeMillis() < deadline) {
             val f = act.capture(recipe.refW, recipe.refH)
             if (f == null) { sleep(recipe.pollMs); continue }
-            val small = f.downscale(8)
+            // Alternate buffers: reusing one would make small and prev the same
+            // array, every difference would be zero, and it would declare the
+            // screen settled instantly.
+            val useA = (prev !== settleA)
+            val small = f.downscaleInto(8, if (useA) settleA else settleB)
+                .also { if (useA) settleA = it else settleB = it }
             val p = prev
             if (p != null) {
                 val d = meanAbsDiff(small, p)
@@ -110,7 +121,8 @@ class Engine(
     }
 
     fun evaluate(frame: Gray, gate: Gate): MatchInfo {
-        val roi = frame.crop(gate.roi[0], gate.roi[1], gate.roi[2], gate.roi[3])
+        val roi = frame.cropInto(gate.roi[0], gate.roi[1], gate.roi[2], gate.roi[3],
+            cropScratch[gate.name]).also { cropScratch[gate.name] = it }
         if (roi.w < gate.template.w || roi.h < gate.template.h) return MatchInfo(false, 0f, 0f, 0, 0)
         val contrast = roi.std()
         val r = Matcher.find(roi, gate.template)
@@ -195,6 +207,11 @@ class Engine(
             if (handleInterrupts(frame)) {
                 if (stuckOn != null) return false
                 continue
+            }
+
+            if (heapIsCritical()) {
+                listener.onLog("    ! memory critical (${(heapUsedFraction() * 100).toInt()}%) - stopping")
+                return false
             }
 
             val m = evaluate(frame, gate)
@@ -287,6 +304,24 @@ class Engine(
         return null
     }
 
+    /**
+     * Fraction of the heap in use. Sustained capture-and-match is memory hungry
+     * enough that running out is a real failure mode, and one that takes more
+     * than this app down with it - so stop while stopping is still possible.
+     */
+    private fun heapUsedFraction(): Float {
+        val rt = Runtime.getRuntime()
+        return (rt.totalMemory() - rt.freeMemory()).toFloat() / rt.maxMemory().toFloat()
+    }
+
+    private fun heapIsCritical(): Boolean {
+        if (heapUsedFraction() < 0.85f) { heapWarnings = 0; return false }
+        heapWarnings++
+        if (heapWarnings == 1)
+            listener.onLog("    ! heap at ${(heapUsedFraction() * 100).toInt()}% - watching")
+        return heapWarnings >= 5
+    }
+
     fun run(loops: Int) {
         listener.onLog("recipe: ${recipe.name}")
         listener.onLog("steps : ${recipe.steps.joinToString(" -> ") { it.name }}")
@@ -307,7 +342,10 @@ class Engine(
         }
         for (n in 1..loops) {
             if (stopping) break
-            listener.onLog("  loop $n/$loops")
+            val rt = Runtime.getRuntime()
+            val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576
+            val maxMb = rt.maxMemory() / 1048576
+            listener.onLog("  loop $n/$loops   heap ${usedMb}/${maxMb} MB")
             for (gate in recipe.steps.drop(startAt)) {
                 listener.onState(n, loops, gate.name)
                 if (!runStep(gate)) {

@@ -23,6 +23,8 @@ class ScreenCapture(
     private var display: VirtualDisplay? = null
     private var rowBuf: ByteArray? = null
     private var last: Gray? = null
+    private var frameBuf: Gray? = null
+    private var scaledBuf: Gray? = null
 
     fun start() {
         val r = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
@@ -52,7 +54,14 @@ class ScreenCapture(
             val pixStride = plane.pixelStride
             val w = img.width
             val h = img.height
-            val out = FloatArray(w * h)
+            // Refill a buffer we already own. Allocating a fresh w*h FloatArray per
+            // frame was ~9.6MB a time, tens of MB/s sustained, straight into the
+            // large-object heap while the system is also mirroring the display.
+            var frame = frameBuf
+            if (frame == null || frame.w != w || frame.h != h) {
+                frame = Gray(w, h, FloatArray(w * h)); frameBuf = frame
+            }
+            val out = frame.px
             var row = rowBuf
             if (row == null || row.size < rowStride) { row = ByteArray(rowStride); rowBuf = row }
 
@@ -70,8 +79,16 @@ class ScreenCapture(
                     i += pixStride
                 }
             }
-            val gray = Gray(w, h, out)
-            val scaled = if (w == refW && h == refH) gray else gray.resizeTo(refW, refH)
+            val scaled = if (w == refW && h == refH) {
+                frame
+            } else {
+                var sc = scaledBuf
+                if (sc == null || sc.w != refW || sc.h != refH) {
+                    sc = Gray(refW, refH, FloatArray(refW * refH)); scaledBuf = sc
+                }
+                frame.resizeInto(sc)
+                sc
+            }
             last = scaled
             return scaled
         } finally {
@@ -83,5 +100,7 @@ class ScreenCapture(
         display?.release(); display = null
         reader?.close(); reader = null
         last = null
+        frameBuf = null
+        scaledBuf = null
     }
 }
