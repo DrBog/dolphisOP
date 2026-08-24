@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+debug/
+*.mp4
+taps.json
+verify*.png
