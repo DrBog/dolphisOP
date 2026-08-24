@@ -128,6 +128,21 @@ class Device:
 
 
 @dataclass
+class Settle:
+    """Wait for the screen to stop moving before acting on a gate.
+
+    A fixed delay is a guess about how long a transition takes. This measures it:
+    a loading overlay or a fade keeps the frame changing, and the screen is only
+    ready once that stops. It needs no template for the loading screen, which
+    matters because the loading screen is precisely the thing nothing recognises.
+    """
+    threshold: float = 3.0      # mean abs frame diff below this counts as still
+    stable_for: float = 0.6     # ...for this long
+    then_wait: float = 1.5      # ...then hold this long before tapping
+    max_wait: float = 25.0      # give up waiting and tap anyway
+
+
+@dataclass
 class Gate:
     """A template plus where to look for it and where to tap when it is found."""
 
@@ -137,6 +152,7 @@ class Gate:
     tap: Any
     timeout: float = 60.0
     pre_delay: tuple[float, float] = (0.0, 0.0)
+    settle: Settle | None = None
     post_delay: tuple[float, float] = (0.5, 0.9)
     nudge: dict | None = None
     optional: bool = False
@@ -175,6 +191,13 @@ class Recipe:
                 raise FileNotFoundError(f"template not found: {path}")
             pd = d.get("post_delay", [0.5, 0.9])
             pre = d.get("pre_delay", [0.0, 0.0])
+            sf = d.get("settle_first")
+            settle = Settle(
+                threshold=float(sf.get("threshold", 3.0)),
+                stable_for=float(sf.get("stable_for", 0.6)),
+                then_wait=float(sf.get("then_wait", 1.5)),
+                max_wait=float(sf.get("max_wait", 25.0)),
+            ) if sf else None
             return Gate(
                 name=d["name"],
                 template=img,
@@ -182,6 +205,7 @@ class Recipe:
                 tap=d.get("tap", "center"),
                 timeout=float(d.get("timeout", 60)),
                 pre_delay=(float(pre[0]), float(pre[1])),
+                settle=settle,
                 post_delay=(float(pd[0]), float(pd[1])),
                 nudge=d.get("nudge"),
                 optional=bool(d.get("optional", False)),
@@ -355,7 +379,9 @@ class Tapper:
                     # before it will actually accept input; tapping into that gap
                     # does nothing and the loop stalls waiting for a transition
                     # that never started.
-                    if gate.pre_delay[1] > 0:
+                    if gate.settle is not None:
+                        self.wait_for_settle(gate.settle, gate.name)
+                    elif gate.pre_delay[1] > 0:
                         hold = random.uniform(*gate.pre_delay)
                         print(f"    {'':16s} holding {hold:.1f}s before tapping")
                         time.sleep(hold)
@@ -392,6 +418,36 @@ class Tapper:
               f"needed {self.rx.match_threshold})")
         if p:
             print(f"      screenshot saved: {p}")
+        return False
+
+    @staticmethod
+    def _small(gray: np.ndarray) -> np.ndarray:
+        return cv2.resize(gray, (gray.shape[1] // 8, gray.shape[0] // 8),
+                          interpolation=cv2.INTER_AREA).astype(np.float32)
+
+    def wait_for_settle(self, cfg: Settle, label: str) -> bool:
+        """Block until the screen stops changing. True if it settled in time."""
+        deadline = time.time() + cfg.max_wait
+        stable_since = None
+        prev = None
+        while time.time() < deadline:
+            _, gray = self.grab()
+            small = self._small(gray)
+            if prev is not None:
+                diff = float(np.abs(small - prev).mean())
+                if diff <= cfg.threshold:
+                    if stable_since is None:
+                        stable_since = time.time()
+                    if time.time() - stable_since >= cfg.stable_for:
+                        print(f"    {'':16s} screen settled (diff {diff:.2f}), "
+                              f"holding {cfg.then_wait:.1f}s")
+                        time.sleep(cfg.then_wait)
+                        return True
+                else:
+                    stable_since = None
+            prev = small
+            time.sleep(self.rx.poll_interval)
+        print(f"    {'':16s} still moving after {cfg.max_wait:.0f}s - tapping anyway")
         return False
 
     # -- resync ------------------------------------------------------------

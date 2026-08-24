@@ -181,6 +181,39 @@ the top. Run both after any change to templates or thresholds.
 `tap: "center"` taps the middle of wherever the template *matched*, not a fixed
 coordinate — so the tap follows the button if the UI shifts.
 
+### `settle_first` — wait for the screen to stop moving
+
+A fixed delay is a guess about how long a transition takes. `settle_first`
+measures it instead: it keeps capturing until the frame stops changing, then
+holds, then taps.
+
+```jsonc
+"settle_first": {
+  "threshold": 3.0,     // mean abs frame difference below this counts as still
+  "stable_for": 0.6,    // ...held for this long
+  "then_wait": 1.5,     // ...then wait this long before tapping
+  "max_wait": 25.0      // give up waiting and tap anyway
+}
+```
+
+The point is that it needs **no template for the loading screen** — which matters,
+because an unrecognised loading screen is exactly the thing that makes a gate fire
+early. Whatever is on screen, if it is animating, the frame keeps changing.
+
+Pick `threshold` from measurements, not intuition. On the source recording, at the
+0.35s spacing the engine actually polls at:
+
+| phase | frame difference |
+| --- | --- |
+| battle / loading | 4.7 – 93.9 |
+| results reveal | 2.0 – 29.5 |
+| transition into next-level | 8.1 – 31.3 |
+| **next-level, settled** | **0.05 – 1.45** |
+| after the tap, loading | 5.9 – 33.1 |
+
+Settled tops out at 1.45 and anything moving starts at 2.0, so 3.0 sits in a wide
+gap. `tap_next_level` uses this.
+
 ### Why `pre_delay` exists
 
 A screen can be drawn — and matched — a moment before it will actually accept

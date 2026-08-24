@@ -119,16 +119,18 @@
         540,
         1400
       ],
-      "pre_delay": [
-        2.0,
-        2.0
-      ],
+      "settle_first": {
+        "threshold": 3.0,
+        "stable_for": 0.6,
+        "then_wait": 1.5,
+        "max_wait": 25.0
+      },
       "timeout": 60,
       "post_delay": [
         1.2,
         1.8
       ],
-      "note": "'GO TO THE NEXT LEVEL' is a tap-anywhere screen; tapping dead centre avoids every button. Dokkan's screen refresh lags its own transition animation here and the loading period before input is accepted runs longer than the animation suggests, so the screen matches well before it is live - hold 2s after detecting it, or the tap lands in that gap and the loop stalls waiting for a transition that never started."
+      "note": "'GO TO THE NEXT LEVEL' is a tap-anywhere screen; tapping dead centre avoids every button. The text fades in over about a second and the loading before it varies, so the gate matches well before the screen accepts input. Rather than guess a fixed delay, wait for the frame to stop changing, then hold 1.5s. Measured on the source recording: while loading or fading the frame-to-frame difference is 5.9-33, once settled it is under 1.5, so 3.0 sits in a wide gap. This needs no template for the loading screen, which is the thing nothing recognises."
     }
   ],
   "max_interrupt_repeats": 6,

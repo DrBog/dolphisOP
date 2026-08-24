@@ -34,6 +34,42 @@ class Engine(
 
     fun stop() { stopping = true }
 
+    private fun meanAbsDiff(a: Gray, b: Gray): Float {
+        if (a.w != b.w || a.h != b.h) return Float.MAX_VALUE
+        var acc = 0.0
+        for (i in a.px.indices) acc += kotlin.math.abs(a.px[i] - b.px[i])
+        return (acc / a.px.size).toFloat()
+    }
+
+    /** Block until the screen stops changing. True if it settled within maxWait. */
+    private fun waitForSettle(cfg: Settle): Boolean {
+        val deadline = System.currentTimeMillis() + cfg.maxWaitMs
+        var stableSince = 0L
+        var prev: Gray? = null
+        while (!stopping && System.currentTimeMillis() < deadline) {
+            val f = act.capture(recipe.refW, recipe.refH)
+            if (f == null) { sleep(recipe.pollMs); continue }
+            val small = f.downscale(8)
+            val p = prev
+            if (p != null) {
+                val d = meanAbsDiff(small, p)
+                if (d <= cfg.threshold) {
+                    if (stableSince == 0L) stableSince = System.currentTimeMillis()
+                    if (System.currentTimeMillis() - stableSince >= cfg.stableForMs) {
+                        listener.onLog("      screen settled (diff ${"%.2f".format(d)}), " +
+                                "holding ${cfg.thenWaitMs / 1000.0}s")
+                        sleep(cfg.thenWaitMs)
+                        return true
+                    }
+                } else stableSince = 0L
+            }
+            prev = small
+            sleep(recipe.pollMs)
+        }
+        if (!stopping) listener.onLog("      still moving after ${cfg.maxWaitMs / 1000}s - tapping anyway")
+        return false
+    }
+
     // ---- OCR fallback -----------------------------------------------------
     //
     // The template gates only know the screens they were cut from. When one of
@@ -174,7 +210,10 @@ class Engine(
                     // before it will actually accept input; tapping into that gap
                     // does nothing and the loop stalls waiting for a transition
                     // that never started.
-                    if (gate.preDelayMs.last > 0) {
+                    val sf = gate.settle
+                    if (sf != null) {
+                        waitForSettle(sf)
+                    } else if (gate.preDelayMs.last > 0) {
                         listener.onLog("      holding ${gate.preDelayMs.first / 1000.0}s before tapping")
                         settle(gate.preDelayMs)
                     }

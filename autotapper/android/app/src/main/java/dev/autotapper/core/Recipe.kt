@@ -19,6 +19,21 @@ sealed class TapSpec {
 
 class Nudge(val x: Int, val y: Int, val everyMs: Long)
 
+/**
+ * Wait for the screen to stop moving before acting on a gate.
+ *
+ * A fixed delay is a guess about how long a transition takes. This measures it:
+ * a loading overlay or a fade keeps the frame changing, and the screen is only
+ * ready once that stops. It needs no template for the loading screen, which
+ * matters because the loading screen is precisely the thing nothing recognises.
+ */
+class Settle(
+    val threshold: Float = 3.0f,   // mean abs frame difference below this is "still"
+    val stableForMs: Long = 600,   // ...for this long
+    val thenWaitMs: Long = 1500,   // ...then hold this long before tapping
+    val maxWaitMs: Long = 25000,   // give up waiting and tap anyway
+)
+
 class Gate(
     val name: String,
     val template: Matcher.Template,
@@ -26,6 +41,7 @@ class Gate(
     val tap: TapSpec,
     val timeoutMs: Long,
     val preDelayMs: LongRange,
+    val settle: Settle?,
     val postDelayMs: LongRange,
     val nudge: Nudge?,
     val optional: Boolean,
@@ -98,6 +114,13 @@ class Recipe(
                     }
                     else -> TapSpec.Center
                 }
+                val sf = o.optJSONObject("settle_first")
+                val settle = if (sf != null) Settle(
+                    threshold = sf.optDouble("threshold", 3.0).toFloat(),
+                    stableForMs = (sf.optDouble("stable_for", 0.6) * 1000).toLong(),
+                    thenWaitMs = (sf.optDouble("then_wait", 1.5) * 1000).toLong(),
+                    maxWaitMs = (sf.optDouble("max_wait", 25.0) * 1000).toLong(),
+                ) else null
                 val pre = o.optJSONArray("pre_delay")
                 val hold = if (pre != null)
                     (pre.getDouble(0) * 1000).toLong()..(pre.getDouble(1) * 1000).toLong()
@@ -117,6 +140,7 @@ class Recipe(
                     tap = tap,
                     timeoutMs = (o.optDouble("timeout", 60.0) * 1000).toLong(),
                     preDelayMs = hold,
+                    settle = settle,
                     postDelayMs = delay,
                     nudge = nu,
                     optional = o.optBoolean("optional", false),
