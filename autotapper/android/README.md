@@ -23,13 +23,22 @@ Build it (below) or install the APK, then two one-time grants:
 2. **Screen capture** — the system dialog appears when you press Start or Probe.
    Android will not let this be permanent; you re-approve it each session.
 
-Then open the game, switch to Autotapper, and press **Probe** first.
+Then press **Probe** first — see below for the order of operations.
 
 ## Use
 
-- **Probe** — takes one screenshot and scores every gate. No taps. Run it with
-  the game's stage screen open: `tap_fight` should read **YES** near 1.000.
-  This is how you tell "it cannot see the screen" apart from "it cannot tap".
+- **Probe** — takes one screenshot and scores every gate. No taps.
+
+  The screen-capture dialog can only be answered from this app, so at that moment
+  *this app* is what is on screen. Capturing straight away would photograph
+  Autotapper's own UI. So the flow is: press Probe, approve the dialog, and the
+  app minimises itself and counts down (6s by default, adjustable) while you get
+  back to the game. Capture happens when the countdown ends.
+
+  With the stage screen up, `tap_fight` should read **YES** near 1.000. The probe
+  also prints which app was in the foreground and shows a picture of what it
+  actually captured, with each gate's search region drawn on it — if the numbers
+  look wrong, that picture usually says why in one glance.
 - **Start** — runs the loop for the number of iterations you set.
 - **Stop** — also available from the notification, so you do not have to switch
   back to the app.
@@ -128,14 +137,22 @@ rather than to installs made through the session-based installer.
 
 ### Probe shows every gate at a low score
 
-The app is capturing something other than the game — usually the launcher,
-because you probed without switching back to the game first. Open the game, then
-switch to Autotapper and probe.
+Look at the contrast column first, and at the preview image.
 
-If scores are low with the right screen up, the resolution likely differs from
-the 1080x2340 the templates were cut at. Frames are scaled to that reference, so
-it usually still works, but re-cut the templates from a recording on *your*
-device if matching is unreliable. See `../README.md`.
+**Contrast at or near 0** means that region was a single flat colour. No game
+screen looks like that, so the capture is of something else — most often
+Autotapper itself, if the countdown ran out before you got back to the game.
+Raise the lead-in seconds and try again. The "foreground app" line in the probe
+output names what was actually on screen.
+
+**Contrast is healthy but scores are low** means it saw a real screen that is not
+the one the templates expect. Check you are on the event stage screen, not the
+home screen or a different event.
+
+**Scores are low with the right screen up** points at resolution: templates were
+cut at 1080x2340. Frames are scaled to that reference so a different size usually
+still works, but re-cut the templates from a recording on *your* device if
+matching stays unreliable. See `../README.md`.
 
 ### Everything scores ~0 and the screen looks black
 

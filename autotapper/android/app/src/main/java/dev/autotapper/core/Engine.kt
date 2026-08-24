@@ -44,11 +44,13 @@ class Engine(
         return MatchInfo(ok, r.score, contrast, ax, ay)
     }
 
-    /** One screenshot, every gate scored. Used by the Probe button. */
-    fun probe(): List<Pair<Gate, MatchInfo>> {
-        val frame = act.capture(recipe.refW, recipe.refH) ?: return emptyList()
-        return (recipe.steps + recipe.interrupts).map { it to evaluate(frame, it) }
+    /** One screenshot, every gate scored, plus the frame itself for preview. */
+    fun probe(): Pair<Gray, List<Pair<Gate, MatchInfo>>>? {
+        val frame = act.capture(recipe.refW, recipe.refH) ?: return null
+        return frame to (recipe.steps + recipe.interrupts).map { it to evaluate(frame, it) }
     }
+
+    val allGates: List<Gate> get() = recipe.steps + recipe.interrupts
 
     private fun doTap(x: Int, y: Int, label: String) {
         val j = recipe.jitter

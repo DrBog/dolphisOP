@@ -8,6 +8,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -61,7 +65,10 @@ class TapperService : Service(), EngineListener {
         val recipeName = intent.getStringExtra(EXTRA_RECIPE) ?: return
         val loops = intent.getIntExtra(EXTRA_LOOPS, 1)
         val probeOnly = intent.getBooleanExtra(EXTRA_PROBE, false)
+        val leadInMs = intent.getLongExtra(EXTRA_DELAY, 6000L)
 
+        transcript.clear()
+        previewPath = null
         startForegroundWithNotification()
 
         if (data == null) { emit("no screen-capture permission handed to the service"); stopEverything(); return }
@@ -103,8 +110,12 @@ class TapperService : Service(), EngineListener {
 
         worker = Thread {
             try {
-                // Give the virtual display a moment to produce its first frame.
-                Thread.sleep(600)
+                // The capture consent dialog can only be answered from this app,
+                // so at this instant WE are the foreground app - capturing now
+                // photographs our own UI, not the game. Count down first and let
+                // the user get back to the game.
+                countdown(leadInMs)
+                Thread.sleep(400)   // let the virtual display settle
                 runLoop(eng, recipe, probeOnly, loops)
             } catch (ie: InterruptedException) {
                 // Stop was pressed - unwind quietly.
@@ -118,13 +129,80 @@ class TapperService : Service(), EngineListener {
     private fun runLoop(eng: Engine, recipe: Recipe, probeOnly: Boolean, loops: Int) {
             if (probeOnly) {
                 emit("probe: ${recipe.name} (threshold ${recipe.threshold}, min contrast ${recipe.minContrast})")
-                val rows = eng.probe()
-                if (rows.isEmpty()) emit("  no frame captured yet - try again")
-                for ((gate, m) in rows) report(gate, m)
+                emit("  foreground app: ${TapService.foregroundPackage ?: "unknown"}")
+                val result = eng.probe()
+                if (result == null) {
+                    emit("  no frame captured - try again")
+                } else {
+                    val (frame, rows) = result
+                    for ((gate, m) in rows) report(gate, m)
+                    if (rows.all { it.second.contrast < 4f })
+                        emit("  every region is flat - this is almost certainly not the game")
+                    savePreview(frame, rows)?.let {
+                        previewPath = it
+                        sendBroadcast(Intent(ACTION_PREVIEW).setPackage(packageName)
+                            .putExtra(EXTRA_LINE, it))
+                    }
+                }
                 onFinished("probe complete", true)
             } else {
                 eng.run(loops)
             }
+    }
+
+    /** Count down in the notification so the user can switch apps. */
+    private fun countdown(totalMs: Long) {
+        var left = totalMs
+        while (left > 0) {
+            val secs = (left + 999) / 1000
+            notify("Switch to the game - capturing in ${secs}s")
+            emit("  capturing in ${secs}s - switch to the game now")
+            Thread.sleep(minOf(1000L, left))
+            left -= 1000L
+        }
+        notify("Autotapper running")
+    }
+
+    /**
+     * Render what the capture actually saw, with each gate's search region and
+     * any match drawn on it. A picture of the wrong screen is worth more than a
+     * column of zeroes.
+     */
+    private fun savePreview(frame: Gray, rows: List<Pair<Gate, MatchInfo>>): String? = try {
+        val px = IntArray(frame.w * frame.h)
+        for (i in px.indices) {
+            val v = frame.px[i].toInt().coerceIn(0, 255)
+            px[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        val bmp = Bitmap.createBitmap(px, frame.w, frame.h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val box = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 3f; color = Color.GRAY }
+        val hit = Paint().apply { style = Paint.Style.STROKE; strokeWidth = 6f; color = Color.GREEN }
+        val label = Paint().apply { color = Color.YELLOW; textSize = 34f; isAntiAlias = true }
+        for ((gate, m) in rows) {
+            canvas.drawRect(gate.roi[0].toFloat(), gate.roi[1].toFloat(),
+                gate.roi[2].toFloat(), gate.roi[3].toFloat(), box)
+            canvas.drawText("${gate.name} ${"%.2f".format(m.score)}",
+                gate.roi[0].toFloat() + 6f, gate.roi[1].toFloat() - 8f, label)
+            if (m.found) {
+                canvas.drawRect(m.x.toFloat(), m.y.toFloat(),
+                    (m.x + gate.template.w).toFloat(), (m.y + gate.template.h).toFloat(), hit)
+            }
+        }
+        val out = java.io.File(cacheDir, "probe.png")
+        java.io.FileOutputStream(out).use { bmp.compress(Bitmap.CompressFormat.PNG, 90, it) }
+        bmp.recycle()
+        out.absolutePath
+    } catch (t: Throwable) {
+        emit("  preview failed: ${t.message}")
+        null
+    }
+
+    private fun notify(text: String) {
+        runCatching {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIF_ID, buildNotification(text))
+        }
     }
 
     private fun report(gate: Gate, m: MatchInfo) {
@@ -154,19 +232,28 @@ class TapperService : Service(), EngineListener {
             Intent(this, TapperService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val n: Notification = Notification.Builder(this, CHANNEL)
-            .setContentTitle("Autotapper running")
-            .setContentText("Tap Stop to end the loop")
-            .setSmallIcon(R.drawable.ic_stat_tapper)
-            .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Stop", stopIntent).build())
-            .build()
+        val n: Notification = buildNotification("Tap Stop to end the loop")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(NOTIF_ID, n)
         }
+    }
+
+    private fun buildNotification(text: String): Notification {
+        val stopIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, TapperService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return Notification.Builder(this, CHANNEL)
+            .setContentTitle("Autotapper")
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_stat_tapper)
+            .setOngoing(true)
+            .addAction(Notification.Action.Builder(null, "Stop", stopIntent).build())
+            .build()
     }
 
     private fun stopEverything() {
@@ -179,6 +266,10 @@ class TapperService : Service(), EngineListener {
     }
 
     private fun emit(line: String) {
+        // Buffer as well as broadcast. The activity minimises itself so the game
+        // can come forward, which unregisters its receiver - without a transcript
+        // to replay, everything logged while it was away would be lost.
+        transcript.add(line)
         sendBroadcast(Intent(ACTION_LOG).setPackage(packageName).putExtra(EXTRA_LINE, line))
     }
 
@@ -210,6 +301,8 @@ class TapperService : Service(), EngineListener {
         const val ACTION_LOG = "dev.autotapper.LOG"
         const val ACTION_STATE = "dev.autotapper.STATE"
         const val ACTION_DONE = "dev.autotapper.DONE"
+        const val ACTION_PREVIEW = "dev.autotapper.PREVIEW"
+        const val EXTRA_DELAY = "delayMs"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
         const val EXTRA_RECIPE = "recipe"
@@ -218,6 +311,13 @@ class TapperService : Service(), EngineListener {
         const val EXTRA_LINE = "line"
         const val EXTRA_LOOP = "loop"
         const val EXTRA_STEP = "step"
+        /** Replayed by the activity when it comes back to the foreground. */
+        val transcript: MutableList<String> =
+            java.util.Collections.synchronizedList(ArrayList<String>())
+
+        @Volatile
+        var previewPath: String? = null
+
         private const val CHANNEL = "autotapper"
         private const val NOTIF_ID = 42
     }

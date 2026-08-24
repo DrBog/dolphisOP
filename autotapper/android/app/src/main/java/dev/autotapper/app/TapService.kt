@@ -21,7 +21,13 @@ class TapService : AccessibilityService() {
         super.onDestroy()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // We already subscribe to window-state changes; recording the package is
+        // free and turns "why did it see nothing?" into a one-line answer. It
+        // needs no window-content permission.
+        val pkg = event?.packageName?.toString()
+        if (!pkg.isNullOrEmpty()) foregroundPackage = pkg
+    }
     override fun onInterrupt() {}
 
     fun tap(x: Float, y: Float, durationMs: Long = 60L): Boolean {
@@ -34,6 +40,11 @@ class TapService : AccessibilityService() {
     companion object {
         @Volatile
         var instance: TapService? = null
+            private set
+
+        /** Package of the most recent window to come forward, or null if unknown. */
+        @Volatile
+        var foregroundPackage: String? = null
             private set
 
         val isRunning: Boolean get() = instance != null

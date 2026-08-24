@@ -70,6 +70,22 @@
         android:importantForAutofill="no"
         android:hint="20" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="Seconds to switch to the game before capture starts"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/leadIn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:text="6"
+        android:importantForAutofill="no"
+        android:hint="6" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -107,6 +123,16 @@
         android:layout_marginTop="12dp"
         android:text="idle"
         android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/preview"
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:layout_marginTop="8dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="What the last probe captured"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
 
     <ScrollView
         android:id="@+id/logScroll"

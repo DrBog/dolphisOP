@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import android.text.TextUtils
@@ -37,10 +38,16 @@ class MainActivity : AppCompatActivity() {
             putExtra(TapperService.EXTRA_RECIPE, selectedRecipe())
             putExtra(TapperService.EXTRA_LOOPS, loops())
             putExtra(TapperService.EXTRA_PROBE, pendingProbe)
+            putExtra(TapperService.EXTRA_DELAY, leadInMs())
         }
         ui.log.text = ""
+        ui.preview.visibility = android.view.View.GONE
         startForegroundService(i)
         setRunning(true)
+        // The consent dialog can only be answered from here, which leaves us in
+        // the foreground - so a capture taken now would photograph this screen.
+        // Step aside and let the game come back before the countdown expires.
+        moveTaskToBack(true)
     }
 
     private val receiver = object : BroadcastReceiver() {
@@ -53,6 +60,14 @@ class MainActivity : AppCompatActivity() {
                     val total = i.getIntExtra(TapperService.EXTRA_LOOPS, 0)
                     val step = i.getStringExtra(TapperService.EXTRA_STEP) ?: ""
                     ui.status.text = "loop $loop/$total — $step"
+                }
+                TapperService.ACTION_PREVIEW -> {
+                    val path = i.getStringExtra(TapperService.EXTRA_LINE) ?: return
+                    val bmp = BitmapFactory.decodeFile(path)
+                    if (bmp != null) {
+                        ui.preview.setImageBitmap(bmp)
+                        ui.preview.visibility = android.view.View.VISIBLE
+                    }
                 }
                 TapperService.ACTION_DONE -> {
                     ui.status.text = i.getStringExtra(TapperService.EXTRA_LINE) ?: "finished"
@@ -105,6 +120,7 @@ class MainActivity : AppCompatActivity() {
             addAction(TapperService.ACTION_LOG)
             addAction(TapperService.ACTION_STATE)
             addAction(TapperService.ACTION_DONE)
+            addAction(TapperService.ACTION_PREVIEW)
         }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(receiver, f, Context.RECEIVER_NOT_EXPORTED)
@@ -113,6 +129,21 @@ class MainActivity : AppCompatActivity() {
             registerReceiver(receiver, f)
         }
         refreshAccessibilityState()
+        replayTranscript()
+    }
+
+    /** Re-render anything logged while this activity was in the background. */
+    private fun replayTranscript() {
+        val lines = synchronized(TapperService.transcript) { TapperService.transcript.toList() }
+        if (lines.isEmpty()) return
+        ui.log.text = lines.joinToString("\n") + "\n"
+        ui.logScroll.post { ui.logScroll.fullScroll(android.view.View.FOCUS_DOWN) }
+        TapperService.previewPath?.let { path ->
+            BitmapFactory.decodeFile(path)?.let {
+                ui.preview.setImageBitmap(it)
+                ui.preview.visibility = android.view.View.VISIBLE
+            }
+        }
     }
 
     override fun onPause() {
@@ -153,6 +184,9 @@ class MainActivity : AppCompatActivity() {
     private fun selectedRecipe(): String = ui.recipe.text.toString()
 
     private fun loops(): Int = ui.loops.text.toString().trim().toIntOrNull()?.coerceIn(1, 100000) ?: 1
+
+    private fun leadInMs(): Long =
+        (ui.leadIn.text.toString().trim().toLongOrNull() ?: 6L).coerceIn(0L, 120L) * 1000L
 
     private fun launch(probe: Boolean) {
         if (!haveRecipe) { log("no recipe bundled in assets/recipes"); return }
