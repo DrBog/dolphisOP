@@ -58,10 +58,10 @@
       "name": "tap_start",
       "template": "team_start.png",
       "roi": [
-        685,
-        1885,
+        600,
+        1650,
         1080,
-        2195
+        2300
       ],
       "tap": "center",
       "timeout": 45,
@@ -69,7 +69,7 @@
         1.0,
         1.6
       ],
-      "note": "Team select. Team carries over from the previous clear, so no team building is needed."
+      "note": "Team select. Team carries over from the previous clear, so no team building is needed. The search window is deliberately generous: events differ in how much sits above this button - Majin Buu's stage screen carries an extra 'Lv. SUPER' banner that Goku Black's does not - and a tight window silently fails to match rather than degrading. The button art is distinctive enough that the wider window costs no accuracy."
     },
     {
       "name": "await_results",
