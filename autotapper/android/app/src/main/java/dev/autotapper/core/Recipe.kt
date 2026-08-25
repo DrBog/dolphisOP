@@ -45,6 +45,8 @@ class Gate(
     val settle: Settle?,
     val postDelayMs: LongRange,
     val nudge: Nudge?,
+    /** Seconds of waiting before the OCR fallback reads the screen, per step. */
+    val unstickAfterMs: Long,
     val optional: Boolean,
     val note: String,
 ) {
@@ -143,6 +145,8 @@ class Recipe(
                     settle = settle,
                     postDelayMs = delay,
                     nudge = nu,
+                    unstickAfterMs = o.optDouble("unstick_after", -1.0)
+                        .let { if (it < 0) -1L else (it * 1000).toLong() },
                     optional = o.optBoolean("optional", false),
                     note = o.optString("note", ""),
                 )

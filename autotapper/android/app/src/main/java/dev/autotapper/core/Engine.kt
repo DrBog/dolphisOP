@@ -248,9 +248,12 @@ class Engine(
                 // Waiting far longer than expected usually means an unknown
                 // dialog is in the way. Read it rather than sit out the timeout.
                 val now = System.currentTimeMillis()
+                // Per-step, because "waited too long" means different things: a
+                // modal blocking a tap should be read within seconds, while a
+                // battle legitimately takes over a minute with nothing to press.
+                val after = if (gate.unstickAfterMs >= 0) gate.unstickAfterMs else recipe.unstickAfterMs
                 if (recipe.ocrUnstick && vision != null && unstickTries < recipe.unstickMax &&
-                    now - started > recipe.unstickAfterMs &&
-                    now - lastUnstick > recipe.unstickAfterMs
+                    now - started > after && now - lastUnstick > after
                 ) {
                     unstickTries++
                     lastUnstick = now
