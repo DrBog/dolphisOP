@@ -11,7 +11,19 @@ package dev.autotapper.core
  */
 object DismissPolicy {
 
-    /** If any of these appear anywhere on screen, do not guess at all. */
+    /**
+     * Vertical reach, in reference pixels, of the "is this button safe" check.
+     *
+     * Only text belonging to the same dialog can tell us whether tapping a button
+     * spends something. Dokkan's bottom nav bar permanently reads SHOP, SUMMON
+     * and EXCHANGE, roughly 700px from where a modal's buttons sit, so scanning
+     * the whole screen refused on every screen that shows it - the fallback was
+     * disabled almost everywhere it might have helped. A real spend prompt puts
+     * its cost right next to its buttons, well inside this.
+     */
+    const val NEAR_PX = 450
+
+    /** If any of these appear near the button being considered, do not guess. */
     val FORBIDDEN = listOf(
         "BUY", "PURCHASE", "SHOP", "STORE", "PAY", "SUMMON", "RECHARGE", "REFILL",
         "CONTINUE", "REVIVE", "STONE", "STONES", "EXCHANGE", "PRICE", "COST",
@@ -37,12 +49,17 @@ object DismissPolicy {
     fun decide(words: List<Word>): Decision {
         val seen = words.map { normalise(it.text) }.filter { it.isNotEmpty() }
 
-        FORBIDDEN.firstOrNull { it in seen }?.let { return Decision.Refuse(it) }
-
         for ((group, list) in listOf("decline" to DECLINE, "accept" to ACCEPT)) {
             for (want in list) {
-                val hit = words.firstOrNull { normalise(it.text) == want }
-                if (hit != null) return Decision.Tap(hit, group)
+                val hit = words.firstOrNull { normalise(it.text) == want } ?: continue
+                // Anything alarming beside this button means the whole dialog is
+                // one to leave alone - do not fall through and try another button
+                // in the same dialog.
+                val blocker = words.firstOrNull {
+                    normalise(it.text) in FORBIDDEN && kotlin.math.abs(it.cy - hit.cy) <= NEAR_PX
+                }
+                if (blocker != null) return Decision.Refuse(blocker.text)
+                return Decision.Tap(hit, group)
             }
         }
         return Decision.NothingFound(seen)

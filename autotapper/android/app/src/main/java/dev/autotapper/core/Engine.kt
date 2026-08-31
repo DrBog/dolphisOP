@@ -101,9 +101,13 @@ class Engine(
         if (words == null) { listener.onLog("    ocr unavailable"); return false }
         if (words.isEmpty()) { listener.onLog("    ocr: no text found"); return false }
 
+        // Log what was read either way. When this fails, the words it saw are the
+        // whole diagnosis, and without them the next report is guesswork.
+        val readable = words.map { it.text }.filter { it.isNotBlank() }
+        listener.onLog("    ocr read ${readable.size} words: ${readable.take(14).joinToString(" ")}")
         return when (val d = DismissPolicy.decide(words)) {
             is DismissPolicy.Decision.Refuse -> {
-                listener.onLog("    ocr: screen mentions '${d.blocker}' - refusing to guess a tap here")
+                listener.onLog("    ocr: '${d.blocker}' sits beside the button - refusing to guess here")
                 false
             }
             is DismissPolicy.Decision.Tap -> {
@@ -113,8 +117,7 @@ class Engine(
                 true
             }
             is DismissPolicy.Decision.NothingFound -> {
-                listener.onLog("    ocr: read ${d.seen.size} words, none of them a button " +
-                        "(${d.seen.take(8).joinToString(",")})")
+                listener.onLog("    ocr: none of those is a button it knows how to press")
                 false
             }
         }
