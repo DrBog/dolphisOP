@@ -426,12 +426,24 @@ class Tapper:
                           interpolation=cv2.INTER_AREA).astype(np.float32)
 
     def wait_for_settle(self, cfg: Settle, label: str) -> bool:
-        """Block until the screen stops changing. True if it settled in time."""
+        """Block until the screen stops changing. True if it settled in time.
+
+        Checks interrupts on every poll, same as a normal step. Without this, a
+        popup that appears mid-transition sits there for the full max_wait - or
+        worse, a *static* popup reads as "settled" (nothing is moving) and gets
+        tapped through to whatever is behind it instead of being dismissed.
+        """
         deadline = time.time() + cfg.max_wait
         stable_since = None
         prev = None
         while time.time() < deadline:
             _, gray = self.grab()
+            if self.handle_interrupts(gray):
+                # The screen just changed underneath us; any settle progress
+                # and comparison frame are now stale.
+                prev = None
+                stable_since = None
+                continue
             small = self._small(gray)
             if prev is not None:
                 diff = float(np.abs(small - prev).mean())

@@ -47,7 +47,14 @@ class Engine(
         return (acc / a.px.size).toFloat()
     }
 
-    /** Block until the screen stops changing. True if it settled within maxWait. */
+    /**
+     * Block until the screen stops changing. True if it settled within maxWait.
+     *
+     * Checks interrupts on every poll, same as a normal step. Without this, a
+     * popup that appears mid-transition sits there for the full maxWait - or
+     * worse, a *static* popup reads as "settled" (nothing is moving) and gets
+     * tapped through to whatever is behind it instead of being dismissed.
+     */
     private fun waitForSettle(cfg: Settle): Boolean {
         val deadline = System.currentTimeMillis() + cfg.maxWaitMs
         var stableSince = 0L
@@ -55,6 +62,15 @@ class Engine(
         while (!stopping && System.currentTimeMillis() < deadline) {
             val f = act.capture(recipe.refW, recipe.refH)
             if (f == null) { sleep(recipe.pollMs); continue }
+            if (handleInterrupts(f)) {
+                // The screen just changed underneath us; any settle progress
+                // and comparison frame are now stale. handleInterrupts already
+                // waited out the interrupt's own post_delay, so no extra sleep
+                // here - matches the plain step loop above.
+                prev = null
+                stableSince = 0L
+                continue
+            }
             // Alternate buffers: reusing one would make small and prev the same
             // array, every difference would be zero, and it would declare the
             // screen settled instantly.

@@ -145,6 +145,22 @@ Tune it per recipe with `"ocr_unstick"`, `"unstick_after"` (seconds of waiting
 before it reads the screen, default 20) and `"unstick_max"` (attempts per step,
 default 3).
 
+### Interrupts during a settle-wait
+
+`settle_first` (above) decides "ready" by whether the frame is still changing.
+That definition has a hole: a **static** popup is, by that measure, not moving -
+so without an explicit check, a popup sitting motionless on screen reads as
+SETTLED and gets tapped straight through to whatever is behind it, instead of
+being dismissed. The settle-wait now checks interrupts on every poll, exactly
+like a normal step, and resets its stability timer whenever one fires.
+
+`tools/matcher-parity`'s `settle` check (`gradle run --args="settle"`) proves it:
+a scripted actuator shows a popup for exactly one poll in the middle of a
+settle-wait, then removes it, and asserts the popup gate is tapped *before* the
+step's own tap. Confirmed this fails against the pre-fix code (taps the step
+directly, never touches the popup) and passes against the fix. The desktop tool
+has the identical check in `tools/tests/test_settle_interrupt.py`.
+
 ### Why the matcher is hand-written
 
 OpenCV's Android SDK is ~100MB of native libraries for one function. `Matcher.kt`
