@@ -127,6 +127,14 @@ class Device:
 # ------------------------------------------------------------------- recipe
 
 
+# A repeat of the same interrupt is only evidence of a stuck tap if the screen
+# it dismissed looks the same as last time. Genuinely different content (a
+# different friend's name and avatar) sits far above this; a truly static,
+# undismissed popup sits far below it - see the settle_first measurements in
+# the README for the kind of gap this threshold lives in.
+INTERRUPT_REPEAT_THRESHOLD = 6.0
+
+
 @dataclass
 class Settle:
     """Wait for the screen to stop moving before acting on a gate.
@@ -287,6 +295,7 @@ class Tapper:
         self.stats = {"loops": 0, "taps": 0, "interrupts": 0, "captures": 0}
         self.interrupt_streak = 0
         self.stuck_on: str | None = None
+        self._interrupt_last_crop: dict[str, np.ndarray] = {}
         if debug_dir:
             debug_dir.mkdir(parents=True, exist_ok=True)
 
@@ -336,15 +345,39 @@ class Tapper:
         for g in self.rx.interrupts:
             m = find(gray, g, self.rx.match_threshold, self.rx.min_contrast)
             if m.found:
-                print(f"    ! interrupt: {g.name} (score {m.score:.3f}) -> dismissing")
+                # Dokkan can queue several of these in a row - one friend-request
+                # confirmation per borrowed support after a multi-clear - each
+                # with a different name and avatar. Counting raw consecutive
+                # dismissals cannot tell that apart from a tap that keeps missing
+                # the same button: both look like "this interrupt fired six times
+                # in a row". Only a repeat that shows the SAME screen as last
+                # time is evidence the tap isn't landing.
+                #
+                # The comparison has to stay within the interrupt's own ROI, not
+                # the whole frame: a changed name/avatar is a small fraction of
+                # a 1080x2340 screen, and a whole-frame diff dilutes it into
+                # noise below the threshold - this was caught by the test for
+                # this fix classifying every one of 8 genuinely different
+                # popups as "unchanged".
+                x0, y0, x1, y1 = g.roi
+                crop = gray[y0:y1, x0:x1].astype(np.float32)
+                prev = self._interrupt_last_crop.get(g.name)
+                changed = (prev is None or prev.shape != crop.shape
+                           or float(np.abs(crop - prev).mean()) > INTERRUPT_REPEAT_THRESHOLD)
+                self._interrupt_last_crop[g.name] = crop
+
+                print(f"    ! interrupt: {g.name} (score {m.score:.3f}) -> dismissing"
+                      f"{'' if changed else '  (same as last time)'}")
                 self.do_tap(m.point, g.name)
                 self.stats["interrupts"] += 1
-                self.interrupt_streak += 1
-                # Dismissing the same popup over and over means the tap is not
-                # landing on the button. Say so instead of hammering it forever.
-                if self.interrupt_streak > self.rx.max_interrupt_repeats:
-                    self.stuck_on = g.name
-                    return True
+
+                if changed:
+                    self.interrupt_streak = 0
+                else:
+                    self.interrupt_streak += 1
+                    if self.interrupt_streak > self.rx.max_interrupt_repeats:
+                        self.stuck_on = g.name
+                        return True
                 time.sleep(random.uniform(*g.post_delay))
                 return True
         return False

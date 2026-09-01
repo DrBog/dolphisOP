@@ -21,6 +21,8 @@ class MatchInfo(val found: Boolean, val score: Float, val contrast: Float, val x
  * never tap a screen we cannot see, and stop rather than flail when a screen we
  * expect does not arrive.
  */
+private const val INTERRUPT_REPEAT_THRESHOLD = 6.0f
+
 class Engine(
     private val recipe: Recipe,
     private val act: Actuator,
@@ -30,6 +32,7 @@ class Engine(
     @Volatile private var stopping = false
     private var interruptStreak = 0
     private var stuckOn: String? = null
+    private val interruptLastCrop = HashMap<String, Gray>()
     /** Scratch ROI crops, one per gate, refilled rather than reallocated. */
     private val cropScratch = HashMap<String, Gray>()
     /** Settle detection needs two buffers - one alias and every frame looks identical. */
@@ -187,21 +190,47 @@ class Engine(
         for (g in recipe.interrupts) {
             val m = evaluate(frame, g)
             if (m.found) {
-                listener.onLog("    ! ${g.name} (${"%.3f".format(m.score)}) -> dismissing")
+                // Dokkan can queue several of these in a row - one friend-request
+                // confirmation per borrowed support after a multi-clear - each
+                // with a different name and avatar. Counting raw consecutive
+                // dismissals cannot tell that apart from a tap that keeps
+                // missing the same button: both look like "this interrupt fired
+                // six times in a row". Only a repeat that shows the SAME screen
+                // as last time is evidence the tap isn't landing.
+                //
+                // The comparison has to stay within the interrupt's own ROI,
+                // not the whole frame: a changed name/avatar is a small
+                // fraction of a 1080x2340 screen, and a whole-frame diff
+                // dilutes it into noise below the threshold - caught by the
+                // test for this fix classifying 8 genuinely different popups
+                // as "unchanged". Allocates a fresh crop per firing rather than
+                // reusing a buffer - interrupts are rare events, not the
+                // steady-state poll this app was once burning 24MB/s on.
+                val crop = frame.crop(g.roi[0], g.roi[1], g.roi[2], g.roi[3])
+                val prev = interruptLastCrop[g.name]
+                val changed = prev == null || prev.w != crop.w || prev.h != crop.h ||
+                        meanAbsDiff(crop, prev) > INTERRUPT_REPEAT_THRESHOLD
+                interruptLastCrop[g.name] = crop
+
+                listener.onLog("    ! ${g.name} (${"%.3f".format(m.score)}) -> dismissing" +
+                        if (changed) "" else "  (same as last time)")
                 g.tapPoint(m.x, m.y)?.let { doTap(it.first, it.second, g.name) }
-                interruptStreak++
-                // Dismissing the same popup over and over means the tap is not
-                // landing on the button. Say so instead of hammering it forever.
-                if (interruptStreak > recipe.maxInterruptRepeats) {
-                    // The template's tap is missing the button. Read the dialog
-                    // and press the right one instead of hammering it.
-                    if (recipe.ocrUnstick && vision != null && unstick(frame, g.name)) {
-                        interruptStreak = 0
-                        settle(g.postDelayMs)
+
+                if (changed) {
+                    interruptStreak = 0
+                } else {
+                    interruptStreak++
+                    if (interruptStreak > recipe.maxInterruptRepeats) {
+                        // The template's tap is missing the button. Read the dialog
+                        // and press the right one instead of hammering it.
+                        if (recipe.ocrUnstick && vision != null && unstick(frame, g.name)) {
+                            interruptStreak = 0
+                            settle(g.postDelayMs)
+                            return true
+                        }
+                        stuckOn = g.name
                         return true
                     }
-                    stuckOn = g.name
-                    return true
                 }
                 settle(g.postDelayMs)
                 return true

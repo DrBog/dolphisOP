@@ -161,6 +161,32 @@ step's own tap. Confirmed this fails against the pre-fix code (taps the step
 directly, never touches the popup) and passes against the fix. The desktop tool
 has the identical check in `tools/tests/test_settle_interrupt.py`.
 
+### The "stuck" guard vs. a legitimate run of repeats
+
+`max_interrupt_repeats` exists to catch a tap that keeps missing the same
+button: if an interrupt fires six times in a row with nothing changing, the
+tap is not landing, and the run stops rather than hammering it forever.
+
+But Dokkan can legitimately queue several of the SAME interrupt back to back -
+one friend-request confirmation per borrowed support after a multi-clear, each
+with a different name and avatar. Counting raw consecutive dismissals cannot
+tell that apart from a genuinely stuck tap: both look like "this interrupt
+fired six times in a row." The guard now only counts a repeat if the screen it
+dismissed looks the SAME as the one before it; six different popups in a row
+no longer trips it, while six identical ones still do.
+
+The comparison has to stay within the interrupt's own ROI, not the whole
+screen - a changed name and avatar is a small fraction of a 1080x2340 frame,
+and a whole-frame diff dilutes it into noise below the threshold. That mistake
+made it into the first version of this fix and was caught by writing the test
+for it: eight genuinely different popups all came back "unchanged" until the
+comparison was narrowed to the interrupt's ROI.
+
+`tools/matcher-parity`'s `repeats` check (`gradle run --args="repeats"`) proves
+both halves: 8 distinct repeats must reach the step behind them without
+tripping the guard, and 8 identical repeats must still trip it. The desktop
+tool has the identical check in `tools/tests/test_interrupt_repeats.py`.
+
 ### Why the matcher is hand-written
 
 OpenCV's Android SDK is ~100MB of native libraries for one function. `Matcher.kt`

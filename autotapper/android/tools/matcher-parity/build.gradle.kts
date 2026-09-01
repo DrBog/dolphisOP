@@ -17,7 +17,7 @@ application { mainClass.set("VerifyKt") }
 // Recipe.kt, mirror the change in EngineTestStubs.kt or this link goes stale.
 sourceSets["main"].kotlin.apply {
     setSrcDirs(listOf("src/main/kotlin", "../../app/src/main/java/dev/autotapper/core"))
-    include("Verify.kt", "PolicyCheck.kt", "AllocBench.kt", "SettleInterruptCheck.kt",
+    include("Verify.kt", "PolicyCheck.kt", "AllocBench.kt", "SettleInterruptCheck.kt", "InterruptRepeatCheck.kt",
             "EngineTestStubs.kt",
             "**/Gray.kt", "**/Matcher.kt", "**/DismissPolicy.kt", "**/TextVision.kt",
             "**/Engine.kt")
