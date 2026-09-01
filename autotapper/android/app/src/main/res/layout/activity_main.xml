@@ -153,6 +153,13 @@
         android:text="idle"
         android:textStyle="bold" />
 
+    <Button
+        android:id="@+id/shareLogBtn"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Share log" />
+
     <ImageView
         android:id="@+id/preview"
         android:layout_width="match_parent"

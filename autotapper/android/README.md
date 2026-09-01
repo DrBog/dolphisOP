@@ -69,8 +69,20 @@ Add one by hand instead if you prefer — drop the folder straight into
 - **Start** — runs the loop for the number of iterations you set.
 - **Stop** — also available from the notification, so you do not have to switch
   back to the app.
+- **Share log** — sends the full run log as plain text through the share sheet.
+  The log view is a fixed-height scroll box; a run that stalls can produce more
+  of it than fits on screen, and scrolling and screenshotting a view that has
+  already frozen is not always possible. This sends the raw text instead, no
+  scrolling required, and it reads from the service's own buffer so it is
+  complete even if the activity was recreated mid-run.
 
-The log pane shows every gate as it fires with its score, and every tap.
+The log pane shows every gate as it fires with its score, and every tap. When a
+step times out, or the stuck-tap guard gives up on a repeating interrupt, the
+app takes one more screenshot automatically — every gate's search region and
+score drawn on it, the same rendering Probe uses — and shows it inline. A run
+that stalls now always leaves behind a picture of what confused it, not just
+log lines; see the desktop README for a real bug this exposed in the process
+of adding it (the dump code for this had existed but silently never ran).
 
 ## Build
 

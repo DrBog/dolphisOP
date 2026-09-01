@@ -66,7 +66,7 @@ def make_recipe(max_repeats: int) -> T.Recipe:
     )
 
 
-def run_scenario(frames: list[np.ndarray], max_repeats: int) -> tuple[int, list, T.Tapper]:
+def run_scenario(frames: list[np.ndarray], max_repeats: int, debug_dir=None) -> tuple[int, list, T.Tapper]:
     import cv2
 
     state = {"i": 0}
@@ -85,7 +85,7 @@ def run_scenario(frames: list[np.ndarray], max_repeats: int) -> tuple[int, list,
             return "fake"
 
     rx = make_recipe(max_repeats)
-    tp = T.Tapper(FakeDevice(), rx, dry_run=False, verbose=False)
+    tp = T.Tapper(FakeDevice(), rx, dry_run=False, verbose=False, debug_dir=debug_dir)
     rc = tp.run(1)
     return rc, taps, tp
 
@@ -103,12 +103,21 @@ def main() -> int:
     failed += 0 if ok1 else 1
 
     # Case 2: 8 IDENTICAL popups in a row - this is the case the guard exists
-    # for, and must still trip it.
-    frames = [popup_frame(0)] * 8 + [stage_frame()]
-    rc, taps, tp = run_scenario(frames, max_repeats=6)
-    ok2 = rc == 1 and len(taps) == 8 and tp.stuck_on == "popup"
-    print(f"{'ok  ' if ok2 else 'FAIL'}  8 identical repeats still trip the stuck guard "
-          f"(rc={rc}, taps={len(taps)}, stuck_on={tp.stuck_on})")
+    # for, and must still trip it, AND leave a screenshot behind naming the
+    # stuck interrupt. That screenshot is the whole point: run_step used to
+    # return False from inside its polling loop before ever reaching the dump
+    # code that lived after the loop, so a run that stopped here left no
+    # picture of why - only discovered by writing this assertion.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        debug_dir = Path(td)
+        frames = [popup_frame(0)] * 8 + [stage_frame()]
+        rc, taps, tp = run_scenario(frames, max_repeats=6, debug_dir=debug_dir)
+        dumped = list(debug_dir.glob("*stuck_popup*"))
+        ok2 = rc == 1 and len(taps) == 8 and tp.stuck_on == "popup" and len(dumped) == 1
+    print(f"{'ok  ' if ok2 else 'FAIL'}  8 identical repeats still trip the stuck guard, "
+          f"and dump a screenshot (rc={rc}, taps={len(taps)}, stuck_on={tp.stuck_on}, "
+          f"dumped={[p.name for p in dumped]})")
     failed += 0 if ok2 else 1
 
     print()

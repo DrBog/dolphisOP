@@ -396,6 +396,30 @@ class Tapper:
                 return True
         return False
 
+    def check_stuck(self) -> bool:
+        """True (and reported, with a screenshot) if the interrupt-repeat guard
+        has just given up.
+
+        Every caller of handle_interrupts must check this right after -
+        stuck_on being set means "abort the run". A caller that skips this
+        either keeps polling a run that already decided it is stuck
+        (wait_for_settle, before this existed) or returns early without ever
+        reaching the screenshot dump: run_step's own early return used to do
+        exactly that, a `return False` firing before a dump that lived after
+        the loop ever ran - the run stopped, but with no picture of why.
+        """
+        if not self.stuck_on:
+            return False
+        frame, _ = self.grab()
+        p = self.dump(frame, f"stuck_{self.stuck_on}")
+        print(f"\n    '{self.stuck_on}' dismissed {self.rx.max_interrupt_repeats}+ times "
+              f"and the screen never changed.")
+        print(f"    The tap is most likely missing the button - this popup probably has "
+              f"a layout the template does not cover.")
+        if p:
+            print(f"    screenshot saved: {p}")
+        return True
+
     # -- one gated step ----------------------------------------------------
 
     def run_step(self, gate: Gate) -> bool:
@@ -409,7 +433,7 @@ class Tapper:
             frame, gray = self.grab()
 
             if self.handle_interrupts(gray):
-                if self.stuck_on:
+                if self.check_stuck():
                     return False
                 continue
 
@@ -428,6 +452,8 @@ class Tapper:
                     # that never started.
                     if gate.settle is not None:
                         self.wait_for_settle(gate.settle, gate.name)
+                        if self.check_stuck():
+                            return False
                     elif gate.pre_delay[1] > 0:
                         hold = random.uniform(*gate.pre_delay)
                         print(f"    {'':16s} holding {hold:.1f}s before tapping")
@@ -444,15 +470,11 @@ class Tapper:
 
             time.sleep(self.rx.poll_interval)
 
-        if self.stuck_on:
-            frame, _ = self.grab()
-            p = self.dump(frame, f"stuck_{self.stuck_on}")
-            print(f"\n    '{self.stuck_on}' dismissed {self.rx.max_interrupt_repeats}+ times "
-                  f"and the screen never changed.")
-            print(f"    The tap is most likely missing the button - this popup probably has "
-                  f"a layout the template does not cover.")
-            if p:
-                print(f"    screenshot saved: {p}")
+        # Not expected to trigger here - both places above that can set
+        # stuck_on already call check_stuck() and return before falling out
+        # the bottom of the loop. Kept as a safety net for a future call site
+        # that forgets to.
+        if self.check_stuck():
             return False
 
         if gate.optional:
@@ -486,6 +508,13 @@ class Tapper:
         while time.time() < deadline:
             _, gray = self.grab()
             if self.handle_interrupts(gray):
+                # Stop waiting for a settle that will never matter - the run is
+                # about to abort. Without this, a stuck interrupt inside a
+                # settle-wait went unnoticed until max_wait ran out, and even
+                # then the caller tapped through anyway (a timed-out settle
+                # means "tap anyway" by design; a stuck interrupt does not).
+                if self.stuck_on:
+                    return False
                 # The screen just changed underneath us; any settle progress
                 # and comparison frame are now stale.
                 prev = None

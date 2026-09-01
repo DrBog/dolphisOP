@@ -258,6 +258,29 @@ frames that scored above threshold across the five gates.
 
 ---
 
+## When a run stalls: the screenshot it leaves behind
+
+A step that times out, or an interrupt the stuck-guard gives up on, has
+`--debug-dir` write a screenshot before the run stops - the exact frame that
+confused it, so a report can include a picture instead of just log text.
+
+That dump had a real bug of its own: `run_step`'s main polling loop returned
+`False` the moment the stuck-guard fired, from *inside* the loop - and the
+screenshot code lived *after* the loop, in a branch that early return always
+skipped. The run stopped correctly; it just never left a picture behind,
+silently, for as long as this has existed. The same gap existed a second time
+in `wait_for_settle`, which never even checked whether the guard had fired -
+a stuck interrupt appearing mid-settle-wait went unnoticed until `max_wait`
+ran out, and a timed-out settle means "tap anyway" by design, which is exactly
+wrong for a stuck interrupt.
+
+Both are fixed by routing every place that can trip the guard through one
+`check_stuck()` method, which is also what takes the screenshot. Proven with a
+scripted run of a genuinely-stuck interrupt asserting a screenshot actually
+lands on disk (`tools/tests/test_interrupt_repeats.py`) - confirmed by hand
+that reverting the fix makes the assertion fail (`dumped=[]`) while the fix
+restores it (`dumped=['..._stuck_popup.png']`).
+
 ## Limits — read before running it unattended
 
 - **Resolution is baked in.** Templates were cut at 1080x2340. Other resolutions

@@ -12,6 +12,9 @@ interface EngineListener {
     fun onLog(line: String)
     fun onState(loop: Int, totalLoops: Int, step: String)
     fun onFinished(reason: String, ok: Boolean)
+    /** A step failed (timeout or stuck) - here is what the screen looked like,
+     *  and how every gate scored against it, same as a probe would report. */
+    fun onDebugFrame(frame: Gray, tag: String, rows: List<Pair<Gate, MatchInfo>>) {}
 }
 
 class MatchInfo(
@@ -69,6 +72,12 @@ class Engine(
             val f = act.capture(recipe.refW, recipe.refH)
             if (f == null) { sleep(recipe.pollMs); continue }
             if (handleInterrupts(f)) {
+                // Stop waiting for a settle that will never matter - the run is
+                // about to abort. Without this, a stuck interrupt inside a
+                // settle-wait went unnoticed until maxWaitMs ran out, and even
+                // then the caller tapped through anyway (a timed-out settle
+                // means "tap anyway" by design; a stuck interrupt does not).
+                if (stuckOn != null) return false
                 // The screen just changed underneath us; any settle progress
                 // and comparison frame are now stale. handleInterrupts already
                 // waited out the interrupt's own post_delay, so no extra sleep
@@ -248,6 +257,26 @@ class Engine(
         return false
     }
 
+    /**
+     * True (and reported, with a debug frame) if the interrupt-repeat guard has
+     * just given up. Every caller of handleInterrupts must check this right
+     * after - stuckOn being set means "abort the run", and a caller that
+     * ignores it either keeps polling a run that has already decided it is
+     * stuck (waitForSettle, before this check existed) or returns early
+     * without the debug dump ever running (runStep's own early return used to
+     * do this: the dump lived in dead code after the loop, past a `return
+     * false` that always fired first - caught by the test for this).
+     */
+    private fun checkStuck(): Boolean {
+        val it = stuckOn ?: return false
+        listener.onLog("    '$it' was dismissed ${recipe.maxInterruptRepeats}+ times and the "
+                + "screen never changed.")
+        listener.onLog("    The tap is most likely missing the button - this popup probably "
+                + "has a layout the template does not cover.")
+        dumpDebugFrame("stuck_$it")
+        return true
+    }
+
     private fun runStep(gate: Gate): Boolean {
         val deadline = System.currentTimeMillis() + gate.timeoutMs
         val started = System.currentTimeMillis()
@@ -262,7 +291,7 @@ class Engine(
             if (frame == null) { sleep(recipe.pollMs); continue }
 
             if (handleInterrupts(frame)) {
-                if (stuckOn != null) return false
+                if (checkStuck()) return false
                 continue
             }
 
@@ -287,6 +316,7 @@ class Engine(
                     val sf = gate.settle
                     if (sf != null) {
                         waitForSettle(sf)
+                        if (checkStuck()) return false
                     } else if (gate.preDelayMs.last > 0) {
                         listener.onLog("      holding ${gate.preDelayMs.first / 1000.0}s before tapping")
                         settle(gate.preDelayMs)
@@ -321,11 +351,11 @@ class Engine(
         }
 
         if (stopping) return false
-        stuckOn?.let {
-            listener.onLog("    '$it' was dismissed ${recipe.maxInterruptRepeats}+ times and the "
-                    + "screen never changed.")
-            listener.onLog("    The tap is most likely missing the button - this popup probably "
-                    + "has a layout the template does not cover.")
+        // Not expected to ever trigger here - both places inside the loop that
+        // can set stuckOn already call checkStuck() and return before falling
+        // out the bottom. Kept as a safety net for a future call site that
+        // forgets to.
+        if (checkStuck()) {
             return false
         }
         if (gate.optional) {
@@ -334,7 +364,23 @@ class Engine(
         }
         listener.onLog("    ${gate.name} TIMEOUT after ${gate.timeoutMs / 1000}s " +
                 "(best ${"%.3f".format(best)}, needed ${recipe.threshold})")
+        dumpDebugFrame("timeout_${gate.name}")
         return false
+    }
+
+    /**
+     * Capture one more frame and hand it to the listener for saving.
+     *
+     * A run that stalls used to leave only text log lines behind - reading them
+     * off a phone screen means scrolling a fixed-height view and screenshotting
+     * it, which a real report found impossible to do for a run that had already
+     * frozen. A picture of exactly what confused the run is worth more than
+     * that, and it costs one extra capture only on the failure path.
+     */
+    private fun dumpDebugFrame(tag: String) {
+        val frame = act.capture(recipe.refW, recipe.refH) ?: return
+        val rows = (recipe.steps + recipe.interrupts).map { it to evaluate(frame, it) }
+        listener.onDebugFrame(frame, tag, rows)
     }
 
     /**

@@ -120,6 +120,11 @@ class MainActivity : AppCompatActivity() {
         }
         ui.exportBtn.setOnClickListener { exportSelected() }
         ui.deleteBtn.setOnClickListener { deleteSelected() }
+        // The log view is a fixed-height ScrollView, and copying a long run's
+        // log out of it by scrolling and screenshotting is exactly what a user
+        // reported being unable to do when a run stalled. Share the raw text
+        // instead - no scrolling, no cropping, works for any length.
+        ui.shareLogBtn.setOnClickListener { shareLog() }
 
         if (Build.VERSION.SDK_INT >= 33) {
             ActivityCompat.requestPermissions(
@@ -292,5 +297,22 @@ class MainActivity : AppCompatActivity() {
     private fun log(line: String) {
         ui.log.append(line + "\n")
         ui.logScroll.post { ui.logScroll.fullScroll(android.view.View.FOCUS_DOWN) }
+    }
+
+    /** Pulled from the service's own buffer, not the TextView - guaranteed
+     *  complete even if the activity was recreated mid-run. */
+    private fun shareLog() {
+        val lines = synchronized(TapperService.transcript) { TapperService.transcript.toList() }
+        val text = lines.ifEmpty { listOf(ui.log.text.toString()) }.joinToString("\n")
+        if (text.isBlank()) { Toast.makeText(this, "Nothing to share yet", Toast.LENGTH_SHORT).show(); return }
+        startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                    putExtra(Intent.EXTRA_SUBJECT, "Autotapper log")
+                }, "Share log"
+            )
+        )
     }
 }

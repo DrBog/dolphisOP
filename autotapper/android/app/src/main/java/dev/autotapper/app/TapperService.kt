@@ -304,6 +304,19 @@ class TapperService : Service(), EngineListener {
         main.post { stopEverything() }
     }
 
+    override fun onDebugFrame(frame: Gray, tag: String, rows: List<Pair<Gate, MatchInfo>>) {
+        // Same rendering the Probe button uses - every gate's ROI and score
+        // drawn on the exact frame that confused the run. A run that stalls
+        // used to leave only text behind; scrolling a fixed-height log view on
+        // an already-frozen screen to get it out is exactly what one real
+        // report could not do.
+        emit("  debug: $tag")
+        savePreview(frame, rows)?.let {
+            previewPath = it
+            sendBroadcast(Intent(ACTION_PREVIEW).setPackage(packageName).putExtra(EXTRA_LINE, it))
+        }
+    }
+
     override fun onDestroy() {
         engine?.stop()
         capture?.stop()

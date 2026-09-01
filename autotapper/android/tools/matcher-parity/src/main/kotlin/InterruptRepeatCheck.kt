@@ -64,9 +64,13 @@ private class RepeatActuator(private val frames: List<Gray>) : Actuator {
 
 private class RepeatListener : EngineListener {
     var finishedOk: Boolean? = null
+    val debugDumps = mutableListOf<String>()
     override fun onLog(line: String) {}
     override fun onState(loop: Int, totalLoops: Int, step: String) {}
     override fun onFinished(reason: String, ok: Boolean) { finishedOk = ok }
+    override fun onDebugFrame(frame: Gray, tag: String, rows: List<Pair<Gate, MatchInfo>>) {
+        debugDumps.add(tag)
+    }
 }
 
 private fun repGate(name: String, roi: IntArray, tpl: Gray): Gate = Gate(
@@ -95,24 +99,29 @@ fun repeatsMain(): Int {
     var failed = 0
 
     // Case 1: 8 DIFFERENT popups in a row, exceeding maxInterruptRepeats(6) -
-    // must NOT get stuck, must still reach the stage tap.
+    // must NOT get stuck, must still reach the stage tap, and since nothing
+    // failed there is nothing to dump a debug frame for.
     run {
         val frames = (0 until 8).map { repPopupFrame(it) } + listOf(repStageFrame())
         val (act, listener) = execScenario(frames, maxRepeats = 6)
-        val ok = listener.finishedOk == true && act.taps.size == 9
+        val ok = listener.finishedOk == true && act.taps.size == 9 && listener.debugDumps.isEmpty()
         println("${if (ok) "ok  " else "FAIL"}  8 distinct repeats do not trip the stuck guard " +
-                "(taps=${act.taps.size}, finishedOk=${listener.finishedOk})")
+                "(taps=${act.taps.size}, finishedOk=${listener.finishedOk}, dumps=${listener.debugDumps})")
         if (!ok) failed++
     }
 
     // Case 2: 8 IDENTICAL popups in a row - this is the case the guard exists
-    // for, and must still trip it.
+    // for, and must still trip it, AND leave behind a debug frame naming the
+    // stuck interrupt - the whole point of dumping one is so a stall like this
+    // is diagnosable without the log alone.
     run {
         val frames = (0 until 8).map { repPopupFrame(0) } + listOf(repStageFrame())
         val (act, listener) = execScenario(frames, maxRepeats = 6)
-        val ok = listener.finishedOk == false && act.taps.size == 8
-        println("${if (ok) "ok  " else "FAIL"}  8 identical repeats still trip the stuck guard " +
-                "(taps=${act.taps.size}, finishedOk=${listener.finishedOk})")
+        val ok = listener.finishedOk == false && act.taps.size == 8 &&
+                listener.debugDumps == listOf("stuck_popup")
+        println("${if (ok) "ok  " else "FAIL"}  8 identical repeats still trip the stuck guard, " +
+                "and dump a debug frame (taps=${act.taps.size}, finishedOk=${listener.finishedOk}, " +
+                "dumps=${listener.debugDumps})")
         if (!ok) failed++
     }
 
