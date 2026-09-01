@@ -35,9 +35,19 @@ class Settle(
     val maxWaitMs: Long = 25000,   // give up waiting and tap anyway
 )
 
+/**
+ * One or more templates to look for in the same ROI, tapped the same way.
+ *
+ * More than one template exists for screens whose look genuinely varies - the
+ * reward-reveal banner renders visibly brighter for some rarities/difficulty
+ * tiers than others, brighter than plain normalised correlation shrugs off
+ * (edge-based matching does not rescue it either - the highlight distorts
+ * local contrast, not just overall brightness). The best-scoring template
+ * wins; a gate with one entry behaves exactly as it always did.
+ */
 class Gate(
     val name: String,
-    val template: Matcher.Template,
+    val templates: List<Matcher.Template>,
     val roi: IntArray,           // x0, y0, x1, y1 in reference coords
     val tap: TapSpec,
     val timeoutMs: Long,
@@ -50,10 +60,10 @@ class Gate(
     val optional: Boolean,
     val note: String,
 ) {
-    /** Tap point in reference coords, given where the template matched. */
-    fun tapPoint(matchX: Int, matchY: Int): Pair<Int, Int>? = when (tap) {
+    /** Tap point in reference coords, given where the MATCHED template landed and its size. */
+    fun tapPoint(matchX: Int, matchY: Int, matchW: Int, matchH: Int): Pair<Int, Int>? = when (tap) {
         is TapSpec.None -> null
-        is TapSpec.Center -> (matchX + template.w / 2) to (matchY + template.h / 2)
+        is TapSpec.Center -> (matchX + matchW / 2) to (matchY + matchH / 2)
         is TapSpec.Offset -> (matchX + tap.dx) to (matchY + tap.dy)
         is TapSpec.Fixed -> tap.x to tap.y
     }
@@ -135,9 +145,12 @@ class Recipe(
                     val p = it.getJSONArray("point")
                     Nudge(p.getInt(0), p.getInt(1), (it.optDouble("every", 1.5) * 1000).toLong())
                 }
+                val names = o.optJSONArray("templates")?.let { arr ->
+                    (0 until arr.length()).map { arr.getString(it) }
+                } ?: listOf(o.getString("template"))
                 return Gate(
                     name = o.getString("name"),
-                    template = Matcher.Template(gray("templates/${o.getString("template")}")),
+                    templates = names.map { Matcher.Template(gray("templates/$it")) },
                     roi = roi,
                     tap = tap,
                     timeoutMs = (o.optDouble("timeout", 60.0) * 1000).toLong(),

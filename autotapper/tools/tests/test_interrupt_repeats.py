@@ -56,8 +56,8 @@ def stage_frame() -> np.ndarray:
 
 
 def make_recipe(max_repeats: int) -> T.Recipe:
-    popup_gate = T.Gate(name="popup", template=tile(40, 30, 5), roi=(0, 0, 80, 30), tap="center")
-    stage_gate = T.Gate(name="stage", template=tile(40, 30, 9), roi=(300, 0, 340, 30), tap="center")
+    popup_gate = T.Gate(name="popup", templates=[tile(40, 30, 5)], roi=(0, 0, 80, 30), tap="center")
+    stage_gate = T.Gate(name="stage", templates=[tile(40, 30, 9)], roi=(300, 0, 340, 30), tap="center")
     return T.Recipe(
         name="synthetic", description="", reference_resolution=(RW, RH),
         match_threshold=0.9, min_contrast=5.0, confirm_frames=1, poll_interval=0.0,

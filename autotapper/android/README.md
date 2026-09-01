@@ -161,6 +161,16 @@ step's own tap. Confirmed this fails against the pre-fix code (taps the step
 directly, never touches the popup) and passes against the fix. The desktop tool
 has the identical check in `tools/tests/test_settle_interrupt.py`.
 
+### Multiple templates per gate
+
+Ports the desktop tool's mechanism 1:1: a gate can carry `"templates": [...]`
+instead of a single `"template"`, and the best-scoring one wins - see the
+desktop README for the evidence (a Hell-tier reward-reveal scored 0.463 plain,
+1.000 against a template cut from itself, and edge-based matching didn't
+rescue it either). `MatchInfo` now carries the size of whichever template
+matched, since `TapSpec.Center` needs to centre on the one that actually fired,
+not an arbitrary first one.
+
 ### The "stuck" guard vs. a legitimate run of repeats
 
 `max_interrupt_repeats` exists to catch a tap that keeps missing the same

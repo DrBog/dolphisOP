@@ -232,6 +232,22 @@ reason.
 It is not the same as `post_delay`, which waits *after* tapping to let the next
 screen come up. A step can need both.
 
+### Multiple templates per gate
+
+A gate can list `"templates": [...]` instead of a single `"template"` - the
+best-scoring one wins. This exists because a screen's own look can genuinely
+vary: the reward-reveal banner renders visibly brighter for some rarities or
+difficulty tiers than others, brighter than plain normalised correlation
+shrugs off. A Hell-tier SSR pull scored 0.463 against the plain template and
+1.000 against one cut from that exact screenshot. Edge/gradient-based matching
+was tried as a more brightness-tolerant alternative and measured no better
+(0.417) - the highlight distorts local contrast, not just overall brightness,
+so it isn't a lighting-invariance problem a different matching function
+solves. A second template, sourced from a real example of the variant look,
+is what actually closes the gap.
+
+A gate with one template behaves exactly as it always did; this is additive.
+
 ### Why `min_contrast` exists
 
 `TM_CCOEFF_NORMED` is invariant to brightness and contrast. A screen fading in

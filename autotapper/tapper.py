@@ -152,10 +152,18 @@ class Settle:
 
 @dataclass
 class Gate:
-    """A template plus where to look for it and where to tap when it is found."""
+    """One or more templates to look for in the same ROI, tapped the same way.
+
+    More than one template exists for screens whose look genuinely varies - the
+    reward-reveal banner renders visibly brighter for some rarities/difficulty
+    tiers than others, brighter than plain normalised correlation shrugs off
+    (edge-based matching does not rescue it either - the highlight distorts
+    local contrast, not just overall brightness). The best-scoring template
+    wins; a gate with one entry behaves exactly as it always did.
+    """
 
     name: str
-    template: np.ndarray
+    templates: list[np.ndarray]
     roi: tuple[int, int, int, int]
     tap: Any
     timeout: float = 60.0
@@ -165,11 +173,6 @@ class Gate:
     nudge: dict | None = None
     optional: bool = False
     note: str = ""
-
-    @property
-    def size(self) -> tuple[int, int]:
-        h, w = self.template.shape[:2]
-        return w, h
 
 
 @dataclass
@@ -193,10 +196,14 @@ class Recipe:
         tdir = folder / "templates"
 
         def gate(d: dict) -> Gate:
-            path = tdir / d["template"]
-            img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                raise FileNotFoundError(f"template not found: {path}")
+            names = d["templates"] if "templates" in d else [d["template"]]
+            imgs = []
+            for name in names:
+                path = tdir / name
+                img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    raise FileNotFoundError(f"template not found: {path}")
+                imgs.append(img)
             pd = d.get("post_delay", [0.5, 0.9])
             pre = d.get("pre_delay", [0.0, 0.0])
             sf = d.get("settle_first")
@@ -208,7 +215,7 @@ class Recipe:
             ) if sf else None
             return Gate(
                 name=d["name"],
-                template=img,
+                templates=imgs,
                 roi=tuple(d["roi"]),
                 tap=d.get("tap", "center"),
                 timeout=float(d.get("timeout", 60)),
@@ -246,6 +253,7 @@ class Match:
     contrast: float
     origin: tuple[int, int] = (0, 0)
     point: tuple[int, int] = (0, 0)
+    size: tuple[int, int] = (0, 0)  # of whichever template matched
 
 
 def find(frame_gray: np.ndarray, gate: Gate, threshold: float, min_contrast: float) -> Match:
@@ -255,14 +263,20 @@ def find(frame_gray: np.ndarray, gate: Gate, threshold: float, min_contrast: flo
     x0, y0 = max(0, x0), max(0, y0)
     x1, y1 = min(w, x1), min(h, y1)
     roi = frame_gray[y0:y1, x0:x1]
-    tw, th = gate.size
-    if roi.shape[0] < th or roi.shape[1] < tw:
-        return Match(False, 0.0, 0.0)
-
     contrast = float(roi.std())
-    res = cv2.matchTemplate(roi, gate.template, cv2.TM_CCOEFF_NORMED)
-    _, score, _, loc = cv2.minMaxLoc(res)
-    score = float(score)
+
+    best: tuple[float, tuple[int, int], int, int] | None = None
+    for tpl in gate.templates:
+        th, tw = tpl.shape[:2]
+        if roi.shape[0] < th or roi.shape[1] < tw:
+            continue
+        res = cv2.matchTemplate(roi, tpl, cv2.TM_CCOEFF_NORMED)
+        _, score, _, loc = cv2.minMaxLoc(res)
+        if best is None or score > best[0]:
+            best = (float(score), loc, tw, th)
+    if best is None:
+        return Match(False, 0.0, contrast)
+    score, loc, tw, th = best
 
     # Normalised correlation is invariant to brightness and contrast, so it
     # happily locks onto a screen that is still fading in from black. Requiring
@@ -277,7 +291,7 @@ def find(frame_gray: np.ndarray, gate: Gate, threshold: float, min_contrast: flo
     else:
         pt = (int(gate.tap[0]), int(gate.tap[1]))
 
-    return Match(ok, score, contrast, (ox, oy), pt)
+    return Match(ok, score, contrast, (ox, oy), pt, (tw, th))
 
 
 # ------------------------------------------------------------------- runner
@@ -590,7 +604,7 @@ def cmd_probe(dev: Device, rx: Recipe, args) -> int:
         x0, y0, x1, y1 = g.roi
         cv2.rectangle(ann, (x0, y0), (x1, y1), (90, 90, 90), 2)
         if m.found:
-            w, h = g.size
+            w, h = m.size
             cv2.rectangle(ann, m.origin, (m.origin[0] + w, m.origin[1] + h), (0, 255, 0), 4)
             cv2.drawMarker(ann, m.point, (0, 0, 255), cv2.MARKER_CROSS, 60, 4)
             cv2.putText(ann, g.name, (m.origin[0], max(24, m.origin[1] - 10)),

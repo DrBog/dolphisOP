@@ -14,7 +14,10 @@ interface EngineListener {
     fun onFinished(reason: String, ok: Boolean)
 }
 
-class MatchInfo(val found: Boolean, val score: Float, val contrast: Float, val x: Int, val y: Int)
+class MatchInfo(
+    val found: Boolean, val score: Float, val contrast: Float,
+    val x: Int, val y: Int, val w: Int = 0, val h: Int = 0,
+)
 
 /**
  * The same visual-gated state machine as the desktop tool: never tap on a timer,
@@ -145,15 +148,21 @@ class Engine(
     fun evaluate(frame: Gray, gate: Gate): MatchInfo {
         val roi = frame.cropInto(gate.roi[0], gate.roi[1], gate.roi[2], gate.roi[3],
             cropScratch[gate.name]).also { cropScratch[gate.name] = it }
-        if (roi.w < gate.template.w || roi.h < gate.template.h) return MatchInfo(false, 0f, 0f, 0, 0)
         val contrast = roi.std()
-        val r = Matcher.find(roi, gate.template)
-        val ax = r.x + gate.roi[0]
-        val ay = r.y + gate.roi[1]
+
+        var best: MatchInfo? = null
+        for (tpl in gate.templates) {
+            if (roi.w < tpl.w || roi.h < tpl.h) continue
+            val r = Matcher.find(roi, tpl)
+            if (best == null || r.score > best!!.score) {
+                best = MatchInfo(false, r.score, contrast, r.x + gate.roi[0], r.y + gate.roi[1], tpl.w, tpl.h)
+            }
+        }
+        val b = best ?: return MatchInfo(false, 0f, contrast, 0, 0)
         // Normalised correlation ignores brightness, so a screen fading in from
         // black scores ~0.99 while still invisible and not yet accepting touches.
-        val ok = r.score >= recipe.threshold && contrast >= recipe.minContrast
-        return MatchInfo(ok, r.score, contrast, ax, ay)
+        val ok = b.score >= recipe.threshold && contrast >= recipe.minContrast
+        return MatchInfo(ok, b.score, contrast, b.x, b.y, b.w, b.h)
     }
 
     /** One screenshot, every gate scored, plus the frame itself for preview. */
@@ -214,7 +223,7 @@ class Engine(
 
                 listener.onLog("    ! ${g.name} (${"%.3f".format(m.score)}) -> dismissing" +
                         if (changed) "" else "  (same as last time)")
-                g.tapPoint(m.x, m.y)?.let { doTap(it.first, it.second, g.name) }
+                g.tapPoint(m.x, m.y, m.w, m.h)?.let { doTap(it.first, it.second, g.name) }
 
                 if (changed) {
                     interruptStreak = 0
@@ -282,7 +291,7 @@ class Engine(
                         listener.onLog("      holding ${gate.preDelayMs.first / 1000.0}s before tapping")
                         settle(gate.preDelayMs)
                     }
-                    gate.tapPoint(m.x, m.y)?.let { doTap(it.first, it.second, gate.name) }
+                    gate.tapPoint(m.x, m.y, m.w, m.h)?.let { doTap(it.first, it.second, gate.name) }
                     settle(gate.postDelayMs)
                     return true
                 }

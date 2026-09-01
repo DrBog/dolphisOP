@@ -70,7 +70,7 @@ private class RepeatListener : EngineListener {
 }
 
 private fun repGate(name: String, roi: IntArray, tpl: Gray): Gate = Gate(
-    name = name, template = Matcher.Template(tpl), roi = roi, tap = TapSpec.Center,
+    name = name, templates = listOf(Matcher.Template(tpl)), roi = roi, tap = TapSpec.Center,
     timeoutMs = 5000, preDelayMs = 0L..0L, settle = null, postDelayMs = 0L..0L,
     nudge = null, unstickAfterMs = -1L, optional = false, note = "",
 )

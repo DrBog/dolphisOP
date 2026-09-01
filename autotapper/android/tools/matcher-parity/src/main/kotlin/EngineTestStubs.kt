@@ -29,7 +29,7 @@ class Settle(
 
 class Gate(
     val name: String,
-    val template: Matcher.Template,
+    val templates: List<Matcher.Template>,
     val roi: IntArray,
     val tap: TapSpec,
     val timeoutMs: Long,
@@ -41,9 +41,9 @@ class Gate(
     val optional: Boolean,
     val note: String,
 ) {
-    fun tapPoint(matchX: Int, matchY: Int): Pair<Int, Int>? = when (tap) {
+    fun tapPoint(matchX: Int, matchY: Int, matchW: Int, matchH: Int): Pair<Int, Int>? = when (tap) {
         is TapSpec.None -> null
-        is TapSpec.Center -> (matchX + template.w / 2) to (matchY + template.h / 2)
+        is TapSpec.Center -> (matchX + matchW / 2) to (matchY + matchH / 2)
         is TapSpec.Offset -> (matchX + tap.dx) to (matchY + tap.dy)
         is TapSpec.Fixed -> tap.x to tap.y
     }

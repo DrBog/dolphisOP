@@ -62,7 +62,7 @@ private class RecordingListener : EngineListener {
 
 private fun gate(name: String, roiX: Int, tpl: Gray, settle: Settle?): Gate = Gate(
     name = name,
-    template = Matcher.Template(tpl),
+    templates = listOf(Matcher.Template(tpl)),
     roi = intArrayOf(roiX, 0, roiX + tpl.w, tpl.h),
     tap = TapSpec.Center,
     timeoutMs = 5000,

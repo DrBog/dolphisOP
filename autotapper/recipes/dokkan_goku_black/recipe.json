@@ -75,7 +75,10 @@
     },
     {
       "name": "await_results",
-      "template": "result_screen.png",
+      "templates": [
+        "result_screen.png",
+        "result_screen_bright.png"
+      ],
       "roi": [
         0,
         885,
@@ -88,7 +91,7 @@
         0.2,
         0.4
       ],
-      "note": "Battle auto-resolves in this stage - no combat taps, and nothing is tapped while waiting. A Lv.11 battle took 66s where the Lv.3 in the source recording was instant, so this just waits it out.",
+      "note": "Battle auto-resolves in this stage - no combat taps, and nothing is tapped while waiting. Two templates: the reward-reveal banner renders visibly brighter for some rarities/difficulty tiers ('Welcome to Hell' scored 0.463 against the plain template, 1.000 against a template cut from that exact screenshot) - plain normalised correlation does not shrug this off, and neither does an edge/gradient-based match (tried and measured: 0.417, no better). The second template also recovered a second previously-borderline case (a modal-dimmed results screen, 0.496 -> 0.901) without raising the score on any unrelated screen checked above ~0.28.",
       "unstick_after": 90.0
     },
     {
@@ -106,7 +109,7 @@
         0.9,
         1.4
       ],
-      "note": "OK only becomes tappable once the reward reveal finishes. The nudge taps an inert part of the results panel to skip that animation - it belongs here, not on await_results, where it would be tapping into a live battle.",
+      "note": "OK only becomes tappable once the reward reveal finishes. The nudge taps an inert part of the results panel to skip that animation - it belongs here, not on await_results, where it would be tapping into a live battle. unstick_after is 25s, not the usual 8s: the reward-reveal this step waits out can legitimately run long for a high-rarity pull - a Hell-tier SSR reveal was still mid-animation, no OK button rendered yet, when the previous 8s fuse fired OCR into a screen with nothing to press. This step's own 60s timeout still bounds how long a real stall can run.",
       "nudge": {
         "point": [
           601,
@@ -114,7 +117,7 @@
         ],
         "every": 1.2
       },
-      "unstick_after": 8.0
+      "unstick_after": 25.0
     },
     {
       "name": "tap_next_level",

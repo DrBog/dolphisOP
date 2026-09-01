@@ -197,7 +197,7 @@ class TapperService : Service(), EngineListener {
                 maxOf(label.textSize, gate.roi[1].toFloat() - 8f * k), label)
             if (m.found) {
                 canvas.drawRect(m.x.toFloat(), m.y.toFloat(),
-                    (m.x + gate.template.w).toFloat(), (m.y + gate.template.h).toFloat(), hit)
+                    (m.x + m.w).toFloat(), (m.y + m.h).toFloat(), hit)
             }
         }
         // A full-resolution PNG is ~10MB in memory for a preview shown in a
@@ -223,7 +223,7 @@ class TapperService : Service(), EngineListener {
 
     private fun report(gate: Gate, m: MatchInfo) {
         val mark = if (m.found) "YES" else if (m.score >= 0.82f) "low-contrast" else "no"
-        val pt = gate.tapPoint(m.x, m.y)
+        val pt = gate.tapPoint(m.x, m.y, m.w, m.h)
         val where = pt?.let { "-> (${(it.first * scaleX).toInt()},${(it.second * scaleY).toInt()})" } ?: "(no tap)"
         emit("  ${gate.name.padEnd(16)} ${"%.3f".format(m.score)}  contrast ${"%.1f".format(m.contrast)}  $mark $where")
     }

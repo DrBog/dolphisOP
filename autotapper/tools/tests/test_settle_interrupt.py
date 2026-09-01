@@ -47,7 +47,7 @@ class FakeGate:
     def __init__(self, name, roi_x, tpl, settle):
         self.name = name
         h, w = tpl.shape
-        self.template = tpl.astype(np.uint8)
+        self.templates = [tpl.astype(np.uint8)]
         self.roi = (roi_x, 0, roi_x + w, h)
         self.tap = "center"
         self.timeout = 5.0
@@ -57,11 +57,6 @@ class FakeGate:
         self.nudge = None
         self.optional = False
         self.note = ""
-
-    @property
-    def size(self):
-        h, w = self.template.shape
-        return w, h
 
 
 def main() -> int:
