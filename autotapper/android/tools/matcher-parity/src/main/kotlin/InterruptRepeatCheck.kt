@@ -79,12 +79,17 @@ private fun repGate(name: String, roi: IntArray, tpl: Gray): Gate = Gate(
     nudge = null, unstickAfterMs = -1L, optional = false, note = "",
 )
 
-private fun execScenario(frames: List<Gray>, maxRepeats: Int): Pair<RepeatActuator, RepeatListener> {
+/** Neither popup nor stage visible - a plain background frame. */
+private fun repBlankFrame(): Gray = Gray(RW, RH, FloatArray(RW * RH) { 60f })
+
+private fun execScenario(
+    frames: List<Gray>, maxRepeats: Int, confirmFrames: Int = 1,
+): Pair<RepeatActuator, RepeatListener> {
     val popupGate = repGate("popup", intArrayOf(0, 0, 80, 30), repTile(40, 30, 5))
     val stageGate = repGate("stage", intArrayOf(300, 0, 340, 30), repTile(40, 30, 9))
     val recipe = Recipe(
         name = "synthetic", description = "", refW = RW, refH = RH,
-        threshold = 0.9f, minContrast = 5.0f, confirmFrames = 1, pollMs = 1L, jitter = 0,
+        threshold = 0.9f, minContrast = 5.0f, confirmFrames = confirmFrames, pollMs = 1L, jitter = 0,
         resyncOnStart = false, maxInterruptRepeats = maxRepeats,
         ocrUnstick = false, unstickAfterMs = 100_000L, unstickMax = 0,
         steps = listOf(stageGate), interrupts = listOf(popupGate),
@@ -129,4 +134,40 @@ fun repeatsMain(): Int {
     println(if (failed == 0) "PASS - repeats of a genuinely changing popup are not mistaken for a stuck tap"
             else "FAIL - $failed case(s) wrong")
     return if (failed == 0) 0 else 1
+}
+
+/**
+ * Proves an interrupt now needs confirmFrames consecutive matches before it
+ * taps anything - the fix for a live run that matched friend_request at
+ * 1.000 and tapped the OTHER known layout's button position, on a screen
+ * that a moment later was showing a plain single-OK popup with no button at
+ * that location at all. A one-frame compositing artifact between two
+ * queued dialogs looks exactly like a real popup for a single poll; a
+ * genuine dialog stays up for many. Steps already required this; interrupts
+ * never did.
+ *
+ * Run with: gradle run --args="confirm"
+ */
+fun confirmMain(): Int {
+    val popupTap = 20 to 15    // centre of the 40x30 popup template at roi (0,0,80,30)
+    val stageTap = 320 to 15   // centre of the 40x30 stage template at roi (300,0,340,30)
+
+    // A stray single-frame match, gone the next frame, must NOT be tapped.
+    // Then the SAME popup appears again and stays for confirmFrames(2)
+    // frames - that occurrence must still be dismissed normally.
+    val frames = listOf(
+        repPopupFrame(0),   // transient - one frame only
+        repBlankFrame(),    // gone - resets the confirm counter
+        repPopupFrame(0), repPopupFrame(0),  // stable - two frames, confirmed
+        repStageFrame(),
+    )
+    val (act, listener) = execScenario(frames, maxRepeats = 6, confirmFrames = 2)
+    val ok = listener.finishedOk == true && act.taps == listOf(popupTap, stageTap)
+    println("${if (ok) "ok  " else "FAIL"}  a one-frame popup is not tapped, a two-frame one is " +
+            "(taps=${act.taps}, finishedOk=${listener.finishedOk})")
+
+    println()
+    println(if (ok) "PASS - interrupts require the same confirmation steps already do"
+            else "FAIL - confirmation guard is not working")
+    return if (ok) 0 else 1
 }

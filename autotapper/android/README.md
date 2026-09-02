@@ -102,6 +102,18 @@ native library per ABI, and carrying all four put the APK at 46MB against 18MB
 for arm64 alone. Every phone this targets is arm64; remove the `ndk { abiFilters }`
 block in `app/build.gradle.kts` for a universal APK.
 
+## Interrupts confirm too, now
+
+An interrupt used to dismiss on the very first matching poll - no debouncing,
+unlike a step's `confirm_frames`. Two dialogs queuing back to back (routine
+after a multi-clear, one friend-request confirmation per borrowed support)
+can put a single transitional frame between them, and that frame scored just
+as high as the real thing for exactly one poll on a live run - tapping the
+*other* known button layout's position on a screen that a moment later had no
+button there at all. Interrupts now require the same `confirm_frames`
+consecutive matches steps already do. See the desktop README for the measured
+evidence and `gradle run --args="confirm"` for the proof.
+
 ## How it works
 
 ```

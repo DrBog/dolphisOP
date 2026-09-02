@@ -258,6 +258,31 @@ frames that scored above threshold across the five gates.
 
 ---
 
+## Interrupts confirm too, now
+
+`confirm_frames` has always meant a step needs that many consecutive matches
+before it acts - exactly so a single stray frame cannot trigger a tap.
+Interrupts never had that guard: they acted on the very first match, full
+stop.
+
+That gap surfaced on a live run: `friend_request` matched at score 1.000 and
+tapped the *other* known button layout's position, on a screen that a moment
+later was a plain single-OK popup with no button at that location at all. Two
+friend-request dialogs queuing back to back (routine after a multi-clear) can
+put a single transitional, compositing frame between them, and that frame can
+score just as high as a real dialog - for exactly one poll. A genuine dialog
+stays up for many; the fix costs it nothing to wait one more.
+
+Interrupts now require the same `confirm_frames` consecutive matches steps
+already did, tracked per interrupt name and reset the moment it stops
+matching. `tools/tests/test_interrupt_repeats.py`'s third case is the direct
+proof: a popup present for one frame, then gone, then present again for two
+frames, must produce exactly one tap - for the *second* occurrence, not the
+first. The Kotlin mirror (`gradle run --args="confirm"` in
+`android/tools/matcher-parity`) asserts the identical thing.
+
+---
+
 ## When a run stalls: the screenshot it leaves behind
 
 A step that times out, or an interrupt the stuck-guard gives up on, has

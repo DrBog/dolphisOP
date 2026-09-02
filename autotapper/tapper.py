@@ -310,6 +310,7 @@ class Tapper:
         self.interrupt_streak = 0
         self.stuck_on: str | None = None
         self._interrupt_last_crop: dict[str, np.ndarray] = {}
+        self._interrupt_hits: dict[str, int] = {}
         if debug_dir:
             debug_dir.mkdir(parents=True, exist_ok=True)
 
@@ -358,42 +359,64 @@ class Tapper:
     def handle_interrupts(self, gray: np.ndarray) -> bool:
         for g in self.rx.interrupts:
             m = find(gray, g, self.rx.match_threshold, self.rx.min_contrast)
-            if m.found:
-                # Dokkan can queue several of these in a row - one friend-request
-                # confirmation per borrowed support after a multi-clear - each
-                # with a different name and avatar. Counting raw consecutive
-                # dismissals cannot tell that apart from a tap that keeps missing
-                # the same button: both look like "this interrupt fired six times
-                # in a row". Only a repeat that shows the SAME screen as last
-                # time is evidence the tap isn't landing.
-                #
-                # The comparison has to stay within the interrupt's own ROI, not
-                # the whole frame: a changed name/avatar is a small fraction of
-                # a 1080x2340 screen, and a whole-frame diff dilutes it into
-                # noise below the threshold - this was caught by the test for
-                # this fix classifying every one of 8 genuinely different
-                # popups as "unchanged".
-                x0, y0, x1, y1 = g.roi
-                crop = gray[y0:y1, x0:x1].astype(np.float32)
-                prev = self._interrupt_last_crop.get(g.name)
-                changed = (prev is None or prev.shape != crop.shape
-                           or float(np.abs(crop - prev).mean()) > INTERRUPT_REPEAT_THRESHOLD)
-                self._interrupt_last_crop[g.name] = crop
+            if not m.found:
+                self._interrupt_hits[g.name] = 0
+                continue
 
-                print(f"    ! interrupt: {g.name} (score {m.score:.3f}) -> dismissing"
-                      f"{'' if changed else '  (same as last time)'}")
-                self.do_tap(m.point, g.name)
-                self.stats["interrupts"] += 1
-
-                if changed:
-                    self.interrupt_streak = 0
-                else:
-                    self.interrupt_streak += 1
-                    if self.interrupt_streak > self.rx.max_interrupt_repeats:
-                        self.stuck_on = g.name
-                        return True
-                time.sleep(random.uniform(*g.post_delay))
+            # Steps require confirm_frames consecutive matches before acting -
+            # exactly so a single stray frame cannot trigger a tap. Interrupts
+            # never had that guard: they act on the first match, full stop.
+            # When two dialogs queue back to back (several friend requests in
+            # a row after a multi-clear), one frame can catch a transitional,
+            # compositing moment between them - a genuine popup is up for many
+            # polls, a compositing artifact is not. A live run matched
+            # friend_request at 1.000 and tapped the OTHER known layout's
+            # button position on a screen that, a moment later, was still
+            # showing a plain single-OK popup: the tap missed a button that
+            # was never actually there in that shape. Requiring the same
+            # confirm_frames as a step costs nothing on a real dialog (every
+            # example measured stays up 0.7s or more) and should filter this.
+            hits = self._interrupt_hits.get(g.name, 0) + 1
+            self._interrupt_hits[g.name] = hits
+            if hits < self.rx.confirm_frames:
                 return True
+            self._interrupt_hits[g.name] = 0
+
+            # Dokkan can queue several of these in a row - one friend-request
+            # confirmation per borrowed support after a multi-clear - each
+            # with a different name and avatar. Counting raw consecutive
+            # dismissals cannot tell that apart from a tap that keeps missing
+            # the same button: both look like "this interrupt fired six times
+            # in a row". Only a repeat that shows the SAME screen as last
+            # time is evidence the tap isn't landing.
+            #
+            # The comparison has to stay within the interrupt's own ROI, not
+            # the whole frame: a changed name/avatar is a small fraction of
+            # a 1080x2340 screen, and a whole-frame diff dilutes it into
+            # noise below the threshold - this was caught by the test for
+            # this fix classifying every one of 8 genuinely different
+            # popups as "unchanged".
+            x0, y0, x1, y1 = g.roi
+            crop = gray[y0:y1, x0:x1].astype(np.float32)
+            prev = self._interrupt_last_crop.get(g.name)
+            changed = (prev is None or prev.shape != crop.shape
+                       or float(np.abs(crop - prev).mean()) > INTERRUPT_REPEAT_THRESHOLD)
+            self._interrupt_last_crop[g.name] = crop
+
+            print(f"    ! interrupt: {g.name} (score {m.score:.3f}) -> dismissing"
+                  f"{'' if changed else '  (same as last time)'}")
+            self.do_tap(m.point, g.name)
+            self.stats["interrupts"] += 1
+
+            if changed:
+                self.interrupt_streak = 0
+            else:
+                self.interrupt_streak += 1
+                if self.interrupt_streak > self.rx.max_interrupt_repeats:
+                    self.stuck_on = g.name
+                    return True
+            time.sleep(random.uniform(*g.post_delay))
+            return True
         return False
 
     def check_stuck(self) -> bool:

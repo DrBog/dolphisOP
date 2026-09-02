@@ -55,18 +55,24 @@ def stage_frame() -> np.ndarray:
     return g
 
 
-def make_recipe(max_repeats: int) -> T.Recipe:
+def blank_frame() -> np.ndarray:
+    """Neither popup nor stage visible - a plain background frame."""
+    return np.full((RH, RW), 60, dtype=np.uint8)
+
+
+def make_recipe(max_repeats: int, confirm_frames: int = 1) -> T.Recipe:
     popup_gate = T.Gate(name="popup", templates=[tile(40, 30, 5)], roi=(0, 0, 80, 30), tap="center")
     stage_gate = T.Gate(name="stage", templates=[tile(40, 30, 9)], roi=(300, 0, 340, 30), tap="center")
     return T.Recipe(
         name="synthetic", description="", reference_resolution=(RW, RH),
-        match_threshold=0.9, min_contrast=5.0, confirm_frames=1, poll_interval=0.0,
+        match_threshold=0.9, min_contrast=5.0, confirm_frames=confirm_frames, poll_interval=0.0,
         tap_jitter=0, resync_on_start=False, max_interrupt_repeats=max_repeats,
         steps=[stage_gate], interrupts=[popup_gate],
     )
 
 
-def run_scenario(frames: list[np.ndarray], max_repeats: int, debug_dir=None) -> tuple[int, list, T.Tapper]:
+def run_scenario(frames: list[np.ndarray], max_repeats: int, debug_dir=None,
+                 confirm_frames: int = 1) -> tuple[int, list, T.Tapper]:
     import cv2
 
     state = {"i": 0}
@@ -84,7 +90,7 @@ def run_scenario(frames: list[np.ndarray], max_repeats: int, debug_dir=None) -> 
         def describe(self):
             return "fake"
 
-    rx = make_recipe(max_repeats)
+    rx = make_recipe(max_repeats, confirm_frames)
     tp = T.Tapper(FakeDevice(), rx, dry_run=False, verbose=False, debug_dir=debug_dir)
     rc = tp.run(1)
     return rc, taps, tp
@@ -121,11 +127,36 @@ def main() -> int:
     failed += 0 if ok2 else 1
 
     print()
-    if failed == 0:
-        print("PASS - repeats of a genuinely changing popup are not mistaken for a stuck tap")
-        return 0
-    print(f"FAIL - {failed} case(s) wrong")
-    return 1
+    if failed:
+        print(f"FAIL - {failed} case(s) wrong")
+        return 1
+    print("PASS - repeats of a genuinely changing popup are not mistaken for a stuck tap")
+
+    # Case 3: a one-frame popup match, gone the next frame, must NOT be tapped -
+    # the fix for a live run that matched friend_request at 1.000 and tapped
+    # the OTHER known layout's button position, on a screen that a moment
+    # later was showing a plain single-OK popup with no button there at all.
+    # A one-frame compositing artifact between two queued dialogs looks
+    # exactly like a real popup for a single poll; a genuine dialog stays up
+    # for many. Then the SAME popup reappears and holds for confirm_frames(2)
+    # frames - that occurrence must still be dismissed normally.
+    popup_tap = (20, 15)   # centre of the 40x30 popup template at roi (0,0,80,30)
+    stage_tap = (320, 15)  # centre of the 40x30 stage template at roi (300,0,340,30)
+    frames = [
+        popup_frame(0),               # transient - one frame only
+        blank_frame(),                # gone - resets the confirm counter
+        popup_frame(0), popup_frame(0),  # stable - two frames, confirmed
+        stage_frame(),
+    ]
+    rc, taps, tp = run_scenario(frames, max_repeats=6, confirm_frames=2)
+    ok3 = rc == 0 and taps == [popup_tap, stage_tap]
+    print(f"\n{'ok  ' if ok3 else 'FAIL'}  a one-frame popup is not tapped, a two-frame one is "
+          f"(rc={rc}, taps={taps})")
+    if not ok3:
+        print("FAIL - confirmation guard is not working")
+        return 1
+    print("PASS - interrupts require the same confirmation steps already do")
+    return 0
 
 
 if __name__ == "__main__":

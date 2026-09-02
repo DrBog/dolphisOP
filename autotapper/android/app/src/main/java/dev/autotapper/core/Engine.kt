@@ -39,6 +39,7 @@ class Engine(
     private var interruptStreak = 0
     private var stuckOn: String? = null
     private val interruptLastCrop = HashMap<String, Gray>()
+    private val interruptHits = HashMap<String, Int>()
     /** Scratch ROI crops, one per gate, refilled rather than reallocated. */
     private val cropScratch = HashMap<String, Gray>()
     /** Settle detection needs two buffers - one alias and every frame looks identical. */
@@ -207,52 +208,73 @@ class Engine(
     private fun handleInterrupts(frame: Gray): Boolean {
         for (g in recipe.interrupts) {
             val m = evaluate(frame, g)
-            if (m.found) {
-                // Dokkan can queue several of these in a row - one friend-request
-                // confirmation per borrowed support after a multi-clear - each
-                // with a different name and avatar. Counting raw consecutive
-                // dismissals cannot tell that apart from a tap that keeps
-                // missing the same button: both look like "this interrupt fired
-                // six times in a row". Only a repeat that shows the SAME screen
-                // as last time is evidence the tap isn't landing.
-                //
-                // The comparison has to stay within the interrupt's own ROI,
-                // not the whole frame: a changed name/avatar is a small
-                // fraction of a 1080x2340 screen, and a whole-frame diff
-                // dilutes it into noise below the threshold - caught by the
-                // test for this fix classifying 8 genuinely different popups
-                // as "unchanged". Allocates a fresh crop per firing rather than
-                // reusing a buffer - interrupts are rare events, not the
-                // steady-state poll this app was once burning 24MB/s on.
-                val crop = frame.crop(g.roi[0], g.roi[1], g.roi[2], g.roi[3])
-                val prev = interruptLastCrop[g.name]
-                val changed = prev == null || prev.w != crop.w || prev.h != crop.h ||
-                        meanAbsDiff(crop, prev) > INTERRUPT_REPEAT_THRESHOLD
-                interruptLastCrop[g.name] = crop
+            if (!m.found) {
+                interruptHits[g.name] = 0
+                continue
+            }
 
-                listener.onLog("    ! ${g.name} (${"%.3f".format(m.score)}) -> dismissing" +
-                        if (changed) "" else "  (same as last time)")
-                g.tapPoint(m.x, m.y, m.w, m.h)?.let { doTap(it.first, it.second, g.name) }
+            // Steps require confirmFrames consecutive matches before acting -
+            // exactly so a single stray frame cannot trigger a tap. Interrupts
+            // never had that guard: they act on the first match, full stop.
+            // When two dialogs queue back to back (several friend requests in
+            // a row after a multi-clear), one frame can catch a transitional,
+            // compositing moment between them - a genuine popup is up for many
+            // polls, a compositing artifact is not. A live run matched
+            // friend_request at 1.000 and tapped the OTHER known layout's
+            // button position on a screen that, a moment later, was still
+            // showing a plain single-OK popup: the tap missed a button that
+            // was never actually there in that shape. Requiring the same
+            // confirmFrames as a step costs nothing on a real dialog (every
+            // example measured stays up 0.7s or more) and should filter this.
+            val hits = (interruptHits[g.name] ?: 0) + 1
+            interruptHits[g.name] = hits
+            if (hits < recipe.confirmFrames) return true
+            interruptHits[g.name] = 0
 
-                if (changed) {
-                    interruptStreak = 0
-                } else {
-                    interruptStreak++
-                    if (interruptStreak > recipe.maxInterruptRepeats) {
-                        // The template's tap is missing the button. Read the dialog
-                        // and press the right one instead of hammering it.
-                        if (recipe.ocrUnstick && vision != null && unstick(frame, g.name)) {
-                            interruptStreak = 0
-                            settle(g.postDelayMs)
-                            return true
-                        }
-                        stuckOn = g.name
+            // Dokkan can queue several of these in a row - one friend-request
+            // confirmation per borrowed support after a multi-clear - each
+            // with a different name and avatar. Counting raw consecutive
+            // dismissals cannot tell that apart from a tap that keeps
+            // missing the same button: both look like "this interrupt fired
+            // six times in a row". Only a repeat that shows the SAME screen
+            // as last time is evidence the tap isn't landing.
+            //
+            // The comparison has to stay within the interrupt's own ROI,
+            // not the whole frame: a changed name/avatar is a small
+            // fraction of a 1080x2340 screen, and a whole-frame diff
+            // dilutes it into noise below the threshold - caught by the
+            // test for this fix classifying 8 genuinely different popups
+            // as "unchanged". Allocates a fresh crop per firing rather than
+            // reusing a buffer - interrupts are rare events, not the
+            // steady-state poll this app was once burning 24MB/s on.
+            val crop = frame.crop(g.roi[0], g.roi[1], g.roi[2], g.roi[3])
+            val prev = interruptLastCrop[g.name]
+            val changed = prev == null || prev.w != crop.w || prev.h != crop.h ||
+                    meanAbsDiff(crop, prev) > INTERRUPT_REPEAT_THRESHOLD
+            interruptLastCrop[g.name] = crop
+
+            listener.onLog("    ! ${g.name} (${"%.3f".format(m.score)}) -> dismissing" +
+                    if (changed) "" else "  (same as last time)")
+            g.tapPoint(m.x, m.y, m.w, m.h)?.let { doTap(it.first, it.second, g.name) }
+
+            if (changed) {
+                interruptStreak = 0
+            } else {
+                interruptStreak++
+                if (interruptStreak > recipe.maxInterruptRepeats) {
+                    // The template's tap is missing the button. Read the dialog
+                    // and press the right one instead of hammering it.
+                    if (recipe.ocrUnstick && vision != null && unstick(frame, g.name)) {
+                        interruptStreak = 0
+                        settle(g.postDelayMs)
                         return true
                     }
+                    stuckOn = g.name
+                    return true
                 }
-                settle(g.postDelayMs)
-                return true
             }
+            settle(g.postDelayMs)
+            return true
         }
         return false
     }

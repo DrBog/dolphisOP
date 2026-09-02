@@ -30,6 +30,7 @@ fun main(args: Array<String>) {
     if (args.firstOrNull() == "alloc") kotlin.system.exitProcess(allocMain(args[1]))
     if (args.firstOrNull() == "settle") kotlin.system.exitProcess(settleMain())
     if (args.firstOrNull() == "repeats") kotlin.system.exitProcess(repeatsMain())
+    if (args.firstOrNull() == "confirm") kotlin.system.exitProcess(confirmMain())
     val dir = args.firstOrNull() ?: System.getProperty("data")
         ?: error("usage: run --args=<reference-data-dir>  (see export_reference.py)")
     val base = File(dir)
